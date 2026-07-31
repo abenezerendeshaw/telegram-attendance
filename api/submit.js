@@ -1,7 +1,9 @@
 // api/submit.js
 import axios from "axios";
 
-// Pure JavaScript Ethiopian Date Converter
+// In-memory record tracking
+const dailySubmissions = new Map();
+
 function getEthiopianDate(date = new Date()) {
   const ETHIOPIAN_MONTHS = [
     "መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት",
@@ -50,7 +52,6 @@ function getEthiopianDate(date = new Date()) {
   return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
 
-// Haversine Distance Formula (Meters)
 function getDistanceInMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -70,22 +71,19 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
 
-  // --- Class Day & Time Validation ---
   const now = new Date();
   const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000); // UTC+3
   const dayOfWeek = eatDate.getUTCDay(); // 1 = Mon, 3 = Wed, 5 = Fri
   const totalMinutes = eatDate.getUTCHours() * 60 + eatDate.getUTCMinutes();
 
   const isClassDay = [1, 3, 5].includes(dayOfWeek);
-  // 5:30 PM (1050 mins) to 8:30 PM (1230 mins) EAT
-  const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1230;
+  const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1230; // 5:30 PM to 8:30 PM EAT
 
   if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true" && (!isClassDay || !isWithinWindow)) {
     return res.status(400).json({
       message: "የመገኘት መመዝገቢያ ክፍት የሚሆነው ሰኞ፣ ረቡዕ እና ዓርብ ከማታ 11:30 እስከ 2:30 ብቻ ነው።",
     });
   }
-  // -----------------------------------
 
   try {
     const { fullName, group, status, reason, latitude, longitude } = req.body;
@@ -94,11 +92,20 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: "ሙሉ ስም ማስገባት አስፈላጊ ነው።" });
     }
 
+    const normalizedName = fullName.trim().toLowerCase();
+    const todayKey = now.toISOString().split("T")[0];
+    const userKey = `${todayKey}_${normalizedName}`;
+
+    if (process.env.DISABLE_SINGLE_SUBMISSION_CHECK !== "true" && dailySubmissions.has(userKey)) {
+      return res.status(400).json({
+        message: "ለዛሬ መዝግበዋል። በአንድ ቀን ከአንድ ጊዜ በላይ መመዝገብ አይቻልም።",
+      });
+    }
+
     if (status === "permission" && (!reason || !reason.trim())) {
       return res.status(400).json({ message: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።" });
     }
 
-    // --- Geofence Distance Validation ---
     if (status === "present" && process.env.DISABLE_GPS_CHECK !== "true") {
       if (!latitude || !longitude) {
         return res.status(400).json({
@@ -110,10 +117,7 @@ export default async function handler(req, res) {
       const CLASS_LNG = parseFloat(process.env.CLASS_LNG || "38.761234");
       const MAX_DISTANCE = parseFloat(process.env.MAX_DISTANCE_METERS || "100");
 
-      const userLat = parseFloat(latitude);
-      const userLng = parseFloat(longitude);
-
-      const distance = getDistanceInMeters(CLASS_LAT, CLASS_LNG, userLat, userLng);
+      const distance = getDistanceInMeters(CLASS_LAT, CLASS_LNG, parseFloat(latitude), parseFloat(longitude));
 
       if (distance > MAX_DISTANCE) {
         return res.status(400).json({
@@ -121,7 +125,6 @@ export default async function handler(req, res) {
         });
       }
     }
-    // ------------------------------------
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -170,6 +173,8 @@ export default async function handler(req, res) {
     }
 
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
+
+    dailySubmissions.set(userKey, true);
 
     return res.status(200).json({ success: true, message: "መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
   } catch (error) {
