@@ -1,7 +1,6 @@
 // api/cron/mark-absents.js
 import axios from "axios";
 import { STUDENTS } from "../../src/students.js";
-import { attendanceStore } from "../../lib/store.js";
 
 export default async function handler(req, res) {
   const isTest = req.query.test === "true";
@@ -20,14 +19,20 @@ export default async function handler(req, res) {
 
     if (!BOT_TOKEN || !CHAT_ID) {
       return res.status(500).json({
-        error: "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID environment variables.",
+        error: "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID.",
       });
     }
 
-    // 1. Get real names of students who registered today
-    const submittedNames = attendanceStore.getSubmittedNames();
+    // Pass submitted names as a comma-separated list during manual web testing:
+    // e.g., ?test=true&submitted=Abebe Bikila,Kebede Tassew
+    let submittedNames = new Set();
+    if (req.query.submitted) {
+      req.query.submitted.split(",").forEach((name) => {
+        submittedNames.add(name.trim().toLowerCase());
+      });
+    }
 
-    // 2. Filter ONLY students who DID NOT submit today
+    // 1. Filter students who HAVE NOT submitted
     const absentStudents = STUDENTS.filter(
       (s) => !submittedNames.has(s.name.trim().toLowerCase())
     );
@@ -35,11 +40,11 @@ export default async function handler(req, res) {
     if (absentStudents.length === 0) {
       return res.status(200).json({
         success: true,
-        message: "ሁሉም ተማሪዎች ተመዝግበዋል። የቀረ የለም! (All students present/permitted today)",
+        message: "ሁሉም ተማሪዎች ተመዝግበዋል። የቀረ የለም! (All students present today)",
       });
     }
 
-    // 3. Group absent students by group name
+    // 2. Group absent students
     const groupedAbsents = absentStudents.reduce((acc, student) => {
       const grp = student.group || "ያልተመደበ";
       if (!acc[grp]) acc[grp] = [];
@@ -47,7 +52,7 @@ export default async function handler(req, res) {
       return acc;
     }, {});
 
-    // 4. Format Telegram Markdown Message
+    // 3. Build Markdown Message
     let message = `⚠️ *የዛሬ የቀሩ ተማሪዎች መዝገብ (Absent List)*\n\n`;
     message += `❌ *ጠቅላላ የቀሩ ተማሪዎች:* ${absentStudents.length}\n`;
     message += `──────────────────────\n\n`;
@@ -73,7 +78,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 5. Send message to Telegram
+    // 4. Send report to Telegram
     const telegramRes = await axios.post(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
       payload
@@ -87,7 +92,7 @@ export default async function handler(req, res) {
         submittedCount: submittedNames.size,
         totalAbsents: absentStudents.length,
       },
-      submittedNames: Array.from(submittedNames),
+      excludedSubmittedNames: Array.from(submittedNames),
       groupedAbsents,
       telegramStatus: {
         ok: telegramRes.data.ok,
