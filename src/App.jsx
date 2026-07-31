@@ -30,10 +30,10 @@ export default function App() {
         if (timePassed < twentyFourHours) {
           const remainingMs = twentyFourHours - timePassed;
           const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
-          setIsLocked(true);
+          setIsLocked(false);
           setHoursLeft(remainingHours);
         } else {
-          setIsLocked(true);
+          setIsLocked(false);
         }
       }
     };
