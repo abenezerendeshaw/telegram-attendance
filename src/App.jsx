@@ -59,7 +59,7 @@ export default function App() {
         
         {/* Banner image shifted upward via objectPosition */}
         <img 
-          src="/begena.jpg" 
+          src="/begena.png" 
           alt="በገና (Begena)" 
           style={styles.topImage} 
         />
