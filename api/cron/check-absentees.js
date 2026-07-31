@@ -1,8 +1,7 @@
 // api/cron/check-absentees.js
 import axios from "axios";
-import { STUDENTS } from "../../src/students"; // Master roster list
 
-// Ethiopian Date Converter
+// Pure JavaScript Ethiopian Date Converter
 function getEthiopianDate(date = new Date()) {
   const ETHIOPIAN_MONTHS = [
     "መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት",
@@ -49,11 +48,23 @@ function getEthiopianDate(date = new Date()) {
   return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
 
+// Safely load master roster
+async function loadMasterStudents() {
+  try {
+    const rosterModule = await import("../../src/students.js");
+    return rosterModule.STUDENTS || rosterModule.default || [];
+  } catch (err) {
+    console.error("Failed to load students roster file:", err);
+    return [];
+  }
+}
+
 export default async function handler(req, res) {
-  // 1. Verify Vercel Cron authorization header or allow manual testing in dev
+  // Authorization check (ignored in dev mode or if CRON_SECRET is not configured)
   const authHeader = req.headers.authorization;
   if (
     process.env.NODE_ENV === "production" &&
+    process.env.CRON_SECRET &&
     authHeader !== `Bearer ${process.env.CRON_SECRET}`
   ) {
     return res.status(401).json({ message: "Unauthorized request." });
@@ -65,23 +76,26 @@ export default async function handler(req, res) {
     const TOPIC_ABSENT = process.env.TELEGRAM_TOPIC_ABSENT;
 
     if (!BOT_TOKEN || !CHAT_ID) {
-      return res.status(500).json({ message: "Missing Telegram configuration." });
+      return res.status(500).json({ message: "Missing Telegram configuration variables." });
     }
 
-    // 2. Fetch today's submission logs from your database (or replace with your storage fetch)
-    // For illustration, replace `getTodaySubmissions()` with your database query
-    const todaySubmissions = await getTodaySubmittedStudentNames(); 
+    const masterStudents = await loadMasterStudents();
+    if (!masterStudents || masterStudents.length === 0) {
+      return res.status(500).json({ message: "Master student list is empty or missing." });
+    }
 
-    // 3. Filter master list against present/permitted submissions to get absentees
+    // Fetch today's submitted names from database/storage
+    const todaySubmissions = await getTodaySubmittedStudentNames(); 
     const submittedNameSet = new Set(
       todaySubmissions.map((name) => name.trim().toLowerCase())
     );
 
-    const absentStudents = STUDENTS.filter(
-      (s) => !submittedNameSet.has(s.name.trim().toLowerCase())
-    );
+    // Identify absentees
+    const absentStudents = masterStudents.filter((student) => {
+      const name = typeof student === "string" ? student : student.name;
+      return name && !submittedNameSet.has(name.trim().toLowerCase());
+    });
 
-    // If everyone attended or submitted permission
     if (absentStudents.length === 0) {
       return res.status(200).json({
         success: true,
@@ -89,15 +103,17 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Group absentees by their group name
+    // Group absentees by group name
     const groupedAbsentees = absentStudents.reduce((acc, student) => {
-      const group = student.group || "ያልተመደበ";
+      const name = typeof student === "string" ? student : student.name;
+      const group = typeof student === "string" ? "ያልተመደበ" : (student.group || "ያልተመደበ");
+      
       if (!acc[group]) acc[group] = [];
-      acc[group].push(student.name);
+      acc[group].push(name);
       return acc;
     }, {});
 
-    // 5. Build output message for Telegram
+    // Build Telegram markdown message
     const ethioDate = getEthiopianDate();
     let message = `🚨 *የዕለቱ የቀሩ ተማሪዎች መዝገብ*\n\n📅 *ቀን:*\u2001\u2001${ethioDate}\n\n`;
 
@@ -111,7 +127,6 @@ export default async function handler(req, res) {
 
     message += `⚠️ *ጠቅላላ የቀሩ ተማሪዎች ብዛት:*\u2001${absentStudents.length}`;
 
-    // 6. Post to Telegram absent topic
     const payload = {
       chat_id: CHAT_ID,
       text: message.trim(),
@@ -133,14 +148,13 @@ export default async function handler(req, res) {
       message: "የቀሩት ተማሪዎች ዝርዝር ወደ ቴሌግራም ተልኳል።",
     });
   } catch (error) {
-    console.error("Cron Execution Error:", error.response?.data || error.message);
-    return res.status(500).json({ error: "Failed to process absent list." });
+    const errorDetails = error.response?.data || error.message;
+    console.error("Cron Execution Error:", errorDetails);
+    return res.status(500).json({ error: "Failed to process absent list.", details: errorDetails });
   }
 }
 
-// Dummy helper function – replace with your real database query (e.g. Supabase, Firebase, KV)
+// Replace this mock with your database lookup when ready
 async function getTodaySubmittedStudentNames() {
-  // Example SQL/ORM pseudo query:
-  // SELECT full_name FROM submissions WHERE DATE(created_at) = CURRENT_DATE;
   return []; 
 }

@@ -55,6 +55,24 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
 
+  // --- Class Time Window Validation ---
+  const now = new Date();
+  const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000); // UTC + 3
+  const dayOfWeek = eatDate.getUTCDay(); // 1 = Mon, 3 = Wed, 5 = Fri
+  const totalMinutes = eatDate.getUTCHours() * 60 + eatDate.getUTCMinutes();
+
+  const isClassDay = [1, 3, 5].includes(dayOfWeek);
+  // 5:30 PM (17:30 = 1050 mins) to 8:30 PM (20:30 = 1230 mins) EAT
+  const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1230;
+
+  // Set ALLOW_OFFTIME_SUBMISSION=true in .env if you want to bypass this limit for testing
+  if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true" && (!isClassDay || !isWithinWindow)) {
+    return res.status(400).json({
+      message: "የመገኘት መመዝገቢያ ክፍት የሚሆነው ሰኞ፣ ረቡዕ እና ዓርብ ከማታ 11:30 እስከ 2:30 ብቻ ነው።",
+    });
+  }
+  // ------------------------------------
+
   try {
     const { fullName, group, status, reason } = req.body;
 
@@ -73,7 +91,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: "የሰርቨር ውቅር ስህተት አጋጥሟል።" });
     }
 
-    const now = new Date();
     const ethioFormattedDate = getEthiopianDate(now);
     const formattedTime = now.toLocaleTimeString("am-ET", {
       hour: "2-digit",
@@ -84,7 +101,7 @@ export default async function handler(req, res) {
     const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
     const groupText = group && group.trim() ? group.trim() : "ያልተጠቀሰ";
 
-    // Telegram Message Output Format
+    // Formatted message output with tab-like spacing (\u2001)
     let attendanceMessage = 
       `🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*\n\n` +
       `👤 *ሙሉ ስም:*\u2001\u2001${fullName.trim()}\n` +
@@ -97,7 +114,7 @@ export default async function handler(req, res) {
       attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${reason.trim()}`;
     }
 
-    // Select raw topic ID based on status
+    // Select Raw Topic ID
     const rawTopicId = isPresent
       ? process.env.TELEGRAM_TOPIC_PRESENT
       : process.env.TELEGRAM_TOPIC_PERMISSION;
@@ -108,7 +125,7 @@ export default async function handler(req, res) {
       parse_mode: "Markdown",
     };
 
-    // Safely parse and attach message_thread_id if present and non-zero
+    // Attach message_thread_id safely if configured
     if (rawTopicId) {
       const topicId = parseInt(rawTopicId, 10);
       if (!isNaN(topicId) && topicId > 0) {
@@ -121,7 +138,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, message: "መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
   } catch (error) {
     const errorDetails = error.response?.data || error.message;
-    console.error("Telegram API Error Details:", errorDetails);
+    console.error("Telegram API Error:", errorDetails);
     return res.status(500).json({
       message: "መዝገቡን ማስገባት አልተቻለም።",
       error: typeof errorDetails === "object" ? JSON.stringify(errorDetails) : errorDetails,

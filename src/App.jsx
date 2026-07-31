@@ -145,7 +145,7 @@ export default function App() {
           {isLocked ? (
             <div style={styles.lockNotice}>
               <div style={styles.lockIcon}>⏳</div>
-              <h3 style={styles.lockTitle}>ለዛሬ መዝግበዋል!</h3>
+              <h3 style={styles.lockTitle}>ለዛሬ ተዝግበዋል!</h3>
               <p style={styles.lockText}>
                 የዛሬው መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል። የሚቀጥለውን መዝገብ ለማስገባት ከ{" "}
                 <strong>{hoursLeft} ሰዓታት</strong> በኋላ ድጋሚ ይሞክሩ።
