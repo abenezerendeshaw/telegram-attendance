@@ -42,13 +42,15 @@ export default function App() {
           window.Telegram.WebApp.close();
         }, 2000);
       }
-    } catch (err) {
-      console.error(err);
-      setStatus({
-        type: "error",
-        message: err.response?.data?.message || "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
-      });
-    } finally {
+      } catch (err) {
+            console.error(err);
+            // ሰርቨሩ የላከውን ትክክለኛ Error መልእክት ያሳያል
+            const serverErrorMessage = err.response?.data?.error || err.response?.data?.message || err.message;
+            setStatus({
+              type: "error",
+              message: `ስህተት፡ ${serverErrorMessage}`,
+            });
+          } finally {
       setLoading(false);
     }
   };
