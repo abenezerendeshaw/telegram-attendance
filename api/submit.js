@@ -50,31 +50,45 @@ function getEthiopianDate(date = new Date()) {
   return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
 
+// Haversine Distance Formula (Meters)
+function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
 
-  // --- Class Time Window Validation ---
+  // --- Class Day & Time Validation ---
   const now = new Date();
-  const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000); // UTC + 3
+  const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000); // UTC+3
   const dayOfWeek = eatDate.getUTCDay(); // 1 = Mon, 3 = Wed, 5 = Fri
   const totalMinutes = eatDate.getUTCHours() * 60 + eatDate.getUTCMinutes();
 
   const isClassDay = [1, 3, 5].includes(dayOfWeek);
-  // 5:30 PM (17:30 = 1050 mins) to 8:30 PM (20:30 = 1230 mins) EAT
+  // 5:30 PM (1050 mins) to 8:30 PM (1230 mins) EAT
   const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1230;
 
-  // Set ALLOW_OFFTIME_SUBMISSION=true in .env if you want to bypass this limit for testing
   if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true" && (!isClassDay || !isWithinWindow)) {
     return res.status(400).json({
       message: "የመገኘት መመዝገቢያ ክፍት የሚሆነው ሰኞ፣ ረቡዕ እና ዓርብ ከማታ 11:30 እስከ 2:30 ብቻ ነው።",
     });
   }
-  // ------------------------------------
+  // -----------------------------------
 
   try {
-    const { fullName, group, status, reason } = req.body;
+    const { fullName, group, status, reason, latitude, longitude } = req.body;
 
     if (!fullName || !fullName.trim()) {
       return res.status(400).json({ message: "ሙሉ ስም ማስገባት አስፈላጊ ነው።" });
@@ -83,6 +97,31 @@ export default async function handler(req, res) {
     if (status === "permission" && (!reason || !reason.trim())) {
       return res.status(400).json({ message: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።" });
     }
+
+    // --- Geofence Distance Validation ---
+    if (status === "present" && process.env.DISABLE_GPS_CHECK !== "true") {
+      if (!latitude || !longitude) {
+        return res.status(400).json({
+          message: "ቦታዎን ማረጋገጥ አልተቻለም። እባክዎ የስልክዎን ቦታ (Location / GPS) ያብሩ።",
+        });
+      }
+
+      const CLASS_LAT = parseFloat(process.env.CLASS_LAT || "9.010211");
+      const CLASS_LNG = parseFloat(process.env.CLASS_LNG || "38.761234");
+      const MAX_DISTANCE = parseFloat(process.env.MAX_DISTANCE_METERS || "100");
+
+      const userLat = parseFloat(latitude);
+      const userLng = parseFloat(longitude);
+
+      const distance = getDistanceInMeters(CLASS_LAT, CLASS_LNG, userLat, userLng);
+
+      if (distance > MAX_DISTANCE) {
+        return res.status(400).json({
+          message: `ከትምህርት ቦታ ውጪ መመዝገብ አይቻልም። አሁን ከትምህርት ቦታ ${Math.round(distance)} ሜትር ርቀው ይገኛሉ።`,
+        });
+      }
+    }
+    // ------------------------------------
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -101,7 +140,6 @@ export default async function handler(req, res) {
     const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
     const groupText = group && group.trim() ? group.trim() : "ያልተጠቀሰ";
 
-    // Formatted message output with tab-like spacing (\u2001)
     let attendanceMessage = 
       `🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*\n\n` +
       `👤 *ሙሉ ስም:*\u2001\u2001${fullName.trim()}\n` +
@@ -114,7 +152,6 @@ export default async function handler(req, res) {
       attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${reason.trim()}`;
     }
 
-    // Select Raw Topic ID
     const rawTopicId = isPresent
       ? process.env.TELEGRAM_TOPIC_PRESENT
       : process.env.TELEGRAM_TOPIC_PERMISSION;
@@ -125,7 +162,6 @@ export default async function handler(req, res) {
       parse_mode: "Markdown",
     };
 
-    // Attach message_thread_id safely if configured
     if (rawTopicId) {
       const topicId = parseInt(rawTopicId, 10);
       if (!isNaN(topicId) && topicId > 0) {
