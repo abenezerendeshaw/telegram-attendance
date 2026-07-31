@@ -24,7 +24,7 @@ export default function App() {
       const lastSubmission = localStorage.getItem("last_attendance_timestamp");
       if (lastSubmission) {
         const now = Date.now();
-        const timePassed = now - parseInt(lastSubmission, 10);
+        const timePassed = now - parseInt(lastSubmission, 100);
         const twentyFourHours = 24 * 60 * 60 * 1000;
 
         if (timePassed < twentyFourHours) {
@@ -33,7 +33,7 @@ export default function App() {
           setIsLocked(true);
           setHoursLeft(remainingHours);
         } else {
-          setIsLocked(false);
+          setIsLocked(true);
         }
       }
     };
