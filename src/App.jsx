@@ -24,13 +24,13 @@ export default function App() {
       const lastSubmission = localStorage.getItem("last_attendance_timestamp");
       if (lastSubmission) {
         const now = Date.now();
-        const timePassed = now - parseInt(lastSubmission, 100);
+        const timePassed = now - parseInt(lastSubmission, 10);
         const twentyFourHours = 24 * 60 * 60 * 1000;
 
         if (timePassed < twentyFourHours) {
           const remainingMs = twentyFourHours - timePassed;
           const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
-          setIsLocked(false);
+          setIsLocked(true);
           setHoursLeft(remainingHours);
         } else {
           setIsLocked(false);
