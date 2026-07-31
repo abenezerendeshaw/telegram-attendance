@@ -1,64 +1,17 @@
 // api/submit.js
 import axios from "axios";
+import { toEthiopic } from "ethiopian-date";
 
-// Pure JavaScript Ethiopian Date Converter
-function getEthiopianDate(date = new Date()) {
-  const ETHIOPIAN_MONTHS = [
-    "መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት",
-    "መጋቢት", "ሚያዝያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"
-  ];
-  const ETHIOPIAN_DAYS = [
-    "እሑድ", "ሰኞ", "ማክሰኞ", "ረቡዕ", "ሐሙስ", "ዓርብ", "ቅዳሜ"
-  ];
+// Ethiopian month names in Amharic
+const ETHIOPIAN_MONTHS = [
+  "መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት",
+  "መጋቢት", "ሚያዝያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"
+];
 
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-
-  // Gregorian to Ethiopian conversion logic
-  let ethYear = year - 8;
-  if (month < 9 || (month === 9 && day < 11)) {
-    ethYear -= 1;
-  }
-
-  let newYearDay = 11;
-  if ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) {
-    if (month > 2) {
-      // Leap year adjustments
-    }
-  }
-
-  // Calculate day difference from Sept 11
-  const gregorianMonths = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  if ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) {
-    gregorianMonths[2] = 29;
-  }
-
-  let dayOfYear = day;
-  for (let m = 1; m < month; m++) {
-    dayOfYear += gregorianMonths[m];
-  }
-
-  // Sept 11 is day 254 (or 255 in leap year)
-  const sep11 = ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) ? 255 : 254;
-
-  let ethMonth, ethDay;
-  if (dayOfYear >= sep11) {
-    const diff = dayOfYear - sep11;
-    ethMonth = Math.floor(diff / 30) + 1;
-    ethDay = (diff % 30) + 1;
-  } else {
-    const prevYearDays = ((year - 1) % 4 === 0 && (year - 1) % 100 !== 0) || ((year - 1) % 400 === 0) ? 366 : 365;
-    const diff = (dayOfYear + prevYearDays) - sep11;
-    ethMonth = Math.floor(diff / 30) + 1;
-    ethDay = (diff % 30) + 1;
-  }
-
-  const dayOfWeek = ETHIOPIAN_DAYS[date.getDay()];
-  const monthName = ETHIOPIAN_MONTHS[Math.min(ethMonth - 1, 12)] || "መስከረም";
-
-  return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
-}
+// Ethiopian weekdays in Amharic
+const ETHIOPIAN_DAYS = [
+  "እሑድ", "ሰኞ", "ማክሰኞ", "ረቡዕ", "ሐሙስ", "ዓርብ", "ቅዳሜ"
+];
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -76,17 +29,31 @@ export default async function handler(req, res) {
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
     if (!BOT_TOKEN || !CHAT_ID) {
-      console.error("Missing Environment Variables");
-      return res.status(500).json({ message: "Environment variables missing on Vercel." });
+      return res.status(500).json({ message: "የሰርቨር ውቅር ስህተት አጋጥሟል።" });
     }
 
     const now = new Date();
-    const ethioFormattedDate = getEthiopianDate(now);
+    
+    // Convert Gregorian Date to Ethiopian Date
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1; // 1 - 12
+    const day = now.getDate();
+
+    const [ethYear, ethMonth, ethDay] = toEthiopic(year, month, day);
+    
+    const dayOfWeek = ETHIOPIAN_DAYS[now.getDay()];
+    const monthName = ETHIOPIAN_MONTHS[ethMonth - 1];
+
+    // Formatted Ethiopian Date String (e.g. ሐሙስ፣ ሐምሌ 24 ቀን 2018 ዓ.ም)
+    const ethioFormattedDate = `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
+
+    // Localized Time Format
     const formattedTime = now.toLocaleTimeString("am-ET", {
       hour: "2-digit",
       minute: "2-digit",
     });
 
+    // Attendance Telegram Message
     const attendanceMessage = `
 🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*
 
@@ -104,11 +71,10 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ success: true, message: "መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል!" });
   } catch (error) {
-    const errorDetails = error.response?.data || error.message;
-    console.error("Telegram API Error:", errorDetails);
+    console.error("Telegram API Error:", error.response?.data || error.message);
     return res.status(500).json({
       message: "መገኘት መመዝገብ አልተቻለም።",
-      error: typeof errorDetails === "object" ? JSON.stringify(errorDetails) : errorDetails,
+      error: error.response?.data || error.message,
     });
   }
 }

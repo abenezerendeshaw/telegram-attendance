@@ -42,15 +42,13 @@ export default function App() {
           window.Telegram.WebApp.close();
         }, 2000);
       }
-      } catch (err) {
-            console.error(err);
-            // ሰርቨሩ የላከውን ትክክለኛ Error መልእክት ያሳያል
-            const serverErrorMessage = err.response?.data?.error || err.response?.data?.message || err.message;
-            setStatus({
-              type: "error",
-              message: `ስህተት፡ ${serverErrorMessage}`,
-            });
-          } finally {
+    } catch (err) {
+      console.error(err);
+      setStatus({
+        type: "error",
+        message: err.response?.data?.message || "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
+      });
+    } finally {
       setLoading(false);
     }
   };
@@ -61,7 +59,7 @@ export default function App() {
         
         {/* Banner image shifted upward via objectPosition */}
         <img 
-          src="/begena.png" 
+          src="/begena.jpg" 
           alt="በገና (Begena)" 
           style={styles.topImage} 
         />
