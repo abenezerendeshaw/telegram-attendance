@@ -1,101 +1,167 @@
-import React, { useState, useEffect } from "react";
+// src/App.jsx
+import { useState, useEffect, useRef } from "react";
+import axios from "axios";
+import { STUDENTS } from "./students";
 
 export default function App() {
-  const [fullName, setFullName] = useState("");
-  const [group, setGroup] = useState("");
-  const [status, setStatus] = useState("present");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [attendanceStatus, setAttendanceStatus] = useState("present");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState({ type: "", text: "" });
-  const [alreadySubmitted, setAlreadySubmitted] = useState(false);
+  const [status, setStatus] = useState({ type: "", message: "" });
 
-  // Check if student already submitted TODAY on load
+  // 24-hour Lock State
+  const [isLocked, setIsLocked] = useState(false);
+  const [hoursLeft, setHoursLeft] = useState(0);
+
+  const dropdownRef = useRef(null);
+
   useEffect(() => {
-    const todayStr = new Date().toISOString().split("T")[0];
-    const savedSubmission = localStorage.getItem(`attendance_submitted_${todayStr}`);
-    if (savedSubmission) {
-      setAlreadySubmitted(true);
+    // Check local storage for existing submission within the last 24 hours
+    const checkLockStatus = () => {
+      const lastSubmission = localStorage.getItem("last_attendance_timestamp");
+      if (lastSubmission) {
+        const now = Date.now();
+        const timePassed = now - parseInt(lastSubmission, 10);
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+
+        if (timePassed < twentyFourHours) {
+          const remainingMs = twentyFourHours - timePassed;
+          const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+          setIsLocked(true);
+          setHoursLeft(remainingHours);
+        } else {
+          setIsLocked(false);
+        }
+      }
+    };
+
+    checkLockStatus();
+
+    // Close the autocomplete dropdown when clicking outside
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+
+    // Initialize Telegram WebApp viewport if running inside Telegram
+    if (window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
     }
+
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Filter students by matching input against Amharic name OR English phonetic string
+  const filteredStudents = STUDENTS.filter((s) => {
+    const query = searchTerm.toLowerCase().trim();
+    if (!query) return true;
+    const matchesAmharic = s.name.includes(query);
+    const matchesEnglish = s.englishName?.toLowerCase().includes(query);
+    return matchesAmharic || matchesEnglish;
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage({ type: "", text: "" });
 
-    if (!fullName.trim()) {
-      setMessage({ type: "error", text: "እባክዎ ሙሉ ስምዎን ያስገቡ።" });
+    if (isLocked) {
+      setStatus({
+        type: "error",
+        message: `ከዚህ ቀደም ተመዝግበዋል። እባክዎ ከ ${hoursLeft} ሰዓታት በኋላ ድጋሚ ይሞክሩ።`,
+      });
       return;
     }
 
-    if (status === "permission" && !reason.trim()) {
-      setMessage({ type: "error", text: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።" });
+    if (!selectedStudent) {
+      setStatus({
+        type: "error",
+        message: "እባክዎ ስምዎን ከተዘረዘሩት ውስጥ ይፈልጉና ይምረጡ።",
+      });
+      return;
+    }
+
+    if (attendanceStatus === "permission" && !reason.trim()) {
+      setStatus({
+        type: "error",
+        message: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።",
+      });
       return;
     }
 
     setLoading(true);
+    setStatus({ type: "", message: "" });
 
-    if (status === "present") {
+    // GPS capture for "present"
+    let coords = {};
+    if (attendanceStatus === "present") {
       if (!navigator.geolocation) {
-        setMessage({
+        setStatus({
           type: "error",
-          text: "ጂፒኤስ (GPS) በስልክዎ ላይ አይሰራም። እባክዎ በሌላ ስልክ ይሞክሩ።",
+          message: "ጂፒኤስ (GPS) በስልክዎ ላይ አይሰራም። እባክዎ በሌላ ስልክ ይሞክሩ።",
         });
         setLoading(false);
         return;
       }
 
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const payload = {
-            fullName,
-            group,
-            status,
-            reason: "",
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          };
-          await sendSubmission(payload);
-        },
-        (error) => {
-          setLoading(false);
-          let errorMsg = "ቦታዎን ሳያረጋግጡ መመዝገብ አይችሉም።";
-          if (error.code === error.PERMISSION_DENIED) {
-            errorMsg = "እባክዎ በብราวዘርዎ/ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።";
-          }
-          setMessage({ type: "error", text: errorMsg });
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    } else {
-      const payload = { fullName, group, status, reason };
-      await sendSubmission(payload);
+      try {
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          });
+        });
+        coords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+      } catch (geoErr) {
+        setLoading(false);
+        let errorMsg = "ቦታዎን ሳያረጋግጡ መመዝገብ አይችሉም።";
+        if (geoErr.code === geoErr.PERMISSION_DENIED) {
+          errorMsg = "እባክዎ በብราวዘርዎ/ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።";
+        }
+        setStatus({ type: "error", message: errorMsg });
+        return;
+      }
     }
-  };
 
-  const sendSubmission = async (payload) => {
     try {
-      const res = await fetch("/api/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      await axios.post("/api/submit", {
+        fullName: selectedStudent.name,
+        group: selectedStudent.group,
+        status: attendanceStatus,
+        reason: attendanceStatus === "permission" ? reason : "",
+        ...coords,
       });
 
-      const data = await res.json();
+      // Record timestamp to enforce 24-hour check
+      const nowTimestamp = Date.now();
+      localStorage.setItem("last_attendance_timestamp", nowTimestamp.toString());
+      setIsLocked(true);
+      setHoursLeft(24);
 
-      if (res.ok) {
-        // Save today's date into browser local storage
-        const todayStr = new Date().toISOString().split("T")[0];
-        localStorage.setItem(`attendance_submitted_${todayStr}`, "true");
-        setAlreadySubmitted(true);
+      setStatus({ type: "success", message: "✅ መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
 
-        setMessage({ type: "success", text: data.message });
-        setFullName("");
-        setReason("");
-      } else {
-        setMessage({ type: "error", text: data.message || "ስህተት አጋጥሟል።" });
+      // Close Telegram WebApp window automatically if embedded
+      if (window.Telegram?.WebApp) {
+        setTimeout(() => {
+          window.Telegram.WebApp.close();
+        }, 2000);
       }
     } catch (err) {
-      setMessage({ type: "error", text: "የኔትወርክ ስህተት አጋጥሟል። እባክዎ ደግመው ይሞክሩ።" });
+      console.error(err);
+      setStatus({
+        type: "error",
+        message:
+          err.response?.data?.message || "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
+      });
     } finally {
       setLoading(false);
     }
@@ -104,81 +170,120 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h2 style={styles.title}>🎼 የበገና ትምህርት ክፍል መገኘት መመዝገቢያ</h2>
+        <img src="/begena.png" alt="በገና (Begena)" style={styles.topImage} />
 
-        {message.text && (
-          <div
-            style={{
-              ...styles.alert,
-              backgroundColor: message.type === "error" ? "#fee2e2" : "#dcfce7",
-              color: message.type === "error" ? "#991b1b" : "#166534",
-            }}
-          >
-            {message.text}
-          </div>
-        )}
+        <div style={styles.content}>
+          <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝገብ</h1>
+          <p style={styles.subtitle}>
+            ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።
+          </p>
 
-        {alreadySubmitted ? (
-          <div style={styles.completedBox}>
-            <p style={{ fontSize: "2rem", margin: "0 0 10px 0" }}>✅</p>
-            <p style={{ fontWeight: "bold", color: "#166534", margin: 0 }}>
-              የዛሬው መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል!
-            </p>
-            <p style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: "8px" }}>
-              በአንድ ቀን ውስጥ ከአንድ ጊዜ በላይ መመዝገብ አይቻልም።
-            </p>
-          </div>
-        ) : (
+          {/* Interface stays completely intact and interactive */}
           <form onSubmit={handleSubmit} style={styles.form}>
-            <label style={styles.label}>ሙሉ ስም (Full Name)</label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="ምሳሌ፡ አበበ ከበደ"
-              style={styles.input}
-              required
-            />
+            {/* Bilingual Search Container */}
+            <div style={styles.inputGroup} ref={dropdownRef}>
+              <label style={styles.label}>ስምዎን ይፈልጉ / Search Name</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type="text"
+                  placeholder="በአማርኛ ወይም በEnglish ይፃፉ..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setSelectedStudent(null);
+                    setIsOpen(true);
+                    if (status.type) setStatus({ type: "", message: "" });
+                  }}
+                  onFocus={() => setIsOpen(true)}
+                  style={styles.input}
+                />
 
-            <label style={styles.label}>ቡድን (Group)</label>
-            <select
-              value={group}
-              onChange={(e) => setGroup(e.target.value)}
-              style={styles.input}
-            >
-              <option value="">-- ቡድን ይምረጡ --</option>
-              <option value="ቡድን 1: ቤተ አውታር">ቡድን 1: ቤተ አውታር</option>
-              <option value="ቡድን 2: ቤተ ማዕዶት">ቡድን 2: ቤተ ማዕዶት</option>
-            </select>
+                {/* Dropdown Suggestions */}
+                {isOpen && (
+                  <ul style={styles.dropdownList}>
+                    {filteredStudents.length > 0 ? (
+                      filteredStudents.slice(0, 30).map((st, idx) => (
+                        <li
+                          key={idx}
+                          onClick={() => {
+                            setSelectedStudent(st);
+                            setSearchTerm(st.name);
+                            setIsOpen(false);
+                          }}
+                          style={styles.dropdownItem}
+                        >
+                          <span style={{ fontWeight: "600" }}>{st.name}</span>
+                          <span style={styles.groupSubTag}>{st.group}</span>
+                        </li>
+                      ))
+                    ) : (
+                      <li style={styles.noResultItem}>
+                        ምንም አልተገኘም (No match found)
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            </div>
 
-            <label style={styles.label}>ሁኔታ (Status)</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              style={styles.input}
-            >
-              <option value="present">ተገኝቻለሁ (Present)</option>
-              <option value="permission">ፈቃድ እጠይቃለሁ (Permission)</option>
-            </select>
+            {/* Show Detected Group */}
+            {selectedStudent && (
+              <div style={styles.groupBadge}>
+                📍 <strong>ቡድን:</strong> {selectedStudent.group}
+              </div>
+            )}
 
-            {status === "permission" && (
-              <>
-                <label style={styles.label}>የፈቃድ ምክንያት (Reason)</label>
+            {/* Attendance Choice */}
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>የመገኘት ሁኔታ</label>
+              <select
+                value={attendanceStatus}
+                onChange={(e) => {
+                  setAttendanceStatus(e.target.value);
+                  if (status.type) setStatus({ type: "", message: "" });
+                }}
+                style={styles.select}
+              >
+                <option value="present">ተገኝቷል / ተገኝታለች</option>
+                <option value="permission">ፈቃድ ጠይቋል / ጠይቃለች</option>
+              </select>
+            </div>
+
+            {/* Permission Reason Field */}
+            {attendanceStatus === "permission" && (
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>የፈቃድ ምክንያት</label>
                 <textarea
                   value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="እባክዎ ምክንያትዎን እዚህ ይፃፉ..."
-                  style={{ ...styles.input, height: "80px" }}
-                  required
+                  onChange={(e) => {
+                    setReason(e.target.value);
+                    if (status.type) setStatus({ type: "", message: "" });
+                  }}
+                  placeholder="እባክዎ የፈቃድዎን ምክንያት እዚህ ይፃፉ..."
+                  rows={3}
+                  style={styles.textarea}
                 />
-              </>
+              </div>
+            )}
+
+            {/* Error / Success Messages Banner */}
+            {status.message && (
+              <p
+                style={
+                  status.type === "error"
+                    ? styles.errorMsg
+                    : styles.successMsg
+                }
+              >
+                {status.message}
+              </p>
             )}
 
             <button type="submit" disabled={loading} style={styles.button}>
-              {loading ? "በማረጋገጥ ላይ..." : "መዝግብ (Submit)"}
+              {loading ? "በመመዝገብ ላይ..." : "መረጃውን መዝግብ"}
             </button>
           </form>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -186,60 +291,171 @@ export default function App() {
 
 const styles = {
   container: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
     minHeight: "100vh",
-    backgroundColor: "#f3f4f6",
-    padding: "16px",
-    fontFamily: "sans-serif",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0f1117",
+    color: "#ffffff",
+    fontFamily:
+      "'Noto Sans Ethiopic', -apple-system, BlinkMacSystemFont, sans-serif",
+    padding: "20px",
   },
   card: {
-    backgroundColor: "#ffffff",
-    borderRadius: "12px",
-    padding: "24px",
-    maxWidth: "420px",
     width: "100%",
-    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+    maxWidth: "420px",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    border: "1px solid rgba(255, 255, 255, 0.1)",
+    borderRadius: "16px",
+    overflow: "hidden",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+  },
+  topImage: {
+    width: "100%",
+    height: "180px",
+    objectFit: "cover",
+    objectPosition: "center 20%",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+  },
+  content: {
+    padding: "24px",
+    textAlign: "center",
   },
   title: {
-    fontSize: "1.25rem",
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#1f2937",
-    marginBottom: "20px",
+    fontSize: "20px",
+    fontWeight: "700",
+    margin: "0 0 6px 0",
+    color: "#ffffff",
   },
-  form: { display: "flex", flexDirection: "column", gap: "12px" },
-  label: { fontSize: "0.9rem", fontWeight: "600", color: "#374151" },
+  subtitle: {
+    fontSize: "13px",
+    color: "#a0a0a0",
+    margin: "0 0 20px 0",
+  },
+  form: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+    textAlign: "left",
+  },
+  inputGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+  },
+  label: {
+    fontSize: "13px",
+    fontWeight: "500",
+    color: "#cccccc",
+  },
   input: {
-    padding: "10px",
-    borderRadius: "6px",
-    border: "1px solid #d1d5db",
-    fontSize: "1rem",
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: "10px",
+    backgroundColor: "#1f2430",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    color: "#ffffff",
+    fontSize: "14px",
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  dropdownList: {
+    position: "absolute",
+    top: "108%",
+    left: 0,
+    right: 0,
+    maxHeight: "200px",
+    overflowY: "auto",
+    backgroundColor: "#191d26",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    borderRadius: "10px",
+    listStyle: "none",
+    padding: "0",
+    margin: "0",
+    zIndex: 100,
+    boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+  },
+  dropdownItem: {
+    padding: "12px 14px",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+    cursor: "pointer",
+    fontSize: "14px",
+    color: "#ffffff",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  groupSubTag: {
+    fontSize: "11px",
+    color: "#a0a0a0",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    padding: "2px 6px",
+    borderRadius: "4px",
+  },
+  noResultItem: {
+    padding: "12px 14px",
+    fontSize: "13px",
+    color: "#888888",
+    textAlign: "center",
+  },
+  groupBadge: {
+    backgroundColor: "rgba(217, 119, 6, 0.15)",
+    border: "1px solid rgba(217, 119, 6, 0.4)",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    fontSize: "13px",
+    color: "#fbbf24",
+  },
+  select: {
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: "10px",
+    backgroundColor: "#1f2430",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    color: "#ffffff",
+    fontSize: "14px",
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  textarea: {
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: "10px",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    color: "#ffffff",
+    fontSize: "14px",
+    outline: "none",
+    resize: "none",
+    fontFamily: "inherit",
+    boxSizing: "border-box",
   },
   button: {
-    padding: "12px",
-    backgroundColor: "#2563eb",
+    padding: "14px",
+    borderRadius: "10px",
+    backgroundColor: "#d97706",
     color: "#ffffff",
+    fontSize: "15px",
+    fontWeight: "600",
     border: "none",
-    borderRadius: "6px",
-    fontSize: "1rem",
-    fontWeight: "bold",
     cursor: "pointer",
     marginTop: "8px",
   },
-  alert: {
-    padding: "10px",
+  errorMsg: {
+    fontSize: "13px",
+    color: "#ff6b6b",
+    margin: "0",
+    padding: "8px",
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
     borderRadius: "6px",
-    marginBottom: "12px",
-    fontSize: "0.9rem",
-    textAlign: "center",
   },
-  completedBox: {
-    textAlign: "center",
-    padding: "24px",
-    backgroundColor: "#f0fdf4",
-    borderRadius: "8px",
-    border: "1px solid #bbf7d0",
+  successMsg: {
+    fontSize: "13px",
+    color: "#51cf66",
+    margin: "0",
+    padding: "8px",
+    backgroundColor: "rgba(81, 207, 102, 0.1)",
+    borderRadius: "6px",
   },
 };
