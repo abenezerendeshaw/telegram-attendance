@@ -125,7 +125,7 @@ export default function App() {
         setLoading(false);
         let errorMsg = "ቦታዎን ሳያረጋግጡ መመዝገብ አይችሉም።";
         if (geoErr.code === geoErr.PERMISSION_DENIED) {
-          errorMsg = "እባክዎ በብราวዘርዎ/ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።";
+          errorMsg = "እባክዎ ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።";
         }
         setStatus({ type: "error", message: errorMsg });
         return;
