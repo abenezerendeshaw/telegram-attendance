@@ -71,13 +71,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
 
-  const now = new Date();
+const now = new Date();
   const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000); // UTC+3
   const dayOfWeek = eatDate.getUTCDay(); // 1 = Mon, 3 = Wed, 5 = Fri
   const totalMinutes = eatDate.getUTCHours() * 60 + eatDate.getUTCMinutes();
 
   const isClassDay = [1, 3, 5].includes(dayOfWeek);
-  const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1230; // 5:30 PM to 8:30 PM EAT
+  
+  // Extended Window: 5:30 PM (1050 min) to 12:00 AM Midnight (1440 min) EAT
+  const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1440;
 
   if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true" && (!isClassDay || !isWithinWindow)) {
     return res.status(400).json({
