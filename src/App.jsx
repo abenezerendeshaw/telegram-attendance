@@ -8,13 +8,11 @@ export default function App() {
   const [status, setStatus] = useState({ type: "", message: "" });
 
   useEffect(() => {
-    // Basic Telegram WebApp setup
     if (window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp;
       tg.ready();
       tg.expand();
 
-      // Optional: Auto-fill name if available
       const user = tg.initDataUnsafe?.user;
       if (user) {
         const telegramName = `${user.first_name || ""} ${user.last_name || ""}`.trim();
@@ -35,13 +33,10 @@ export default function App() {
     setStatus({ type: "", message: "" });
 
     try {
-      // POST request to our Vercel Serverless Function
       await axios.post("/api/submit", { fullName });
-      
       setStatus({ type: "success", message: "✅ መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል!" });
-      setFullName(""); // Clear input
+      setFullName("");
 
-      // Close the Web App after a short delay
       if (window.Telegram?.WebApp) {
         setTimeout(() => {
           window.Telegram.WebApp.close();
@@ -62,9 +57,9 @@ export default function App() {
     <div style={styles.container}>
       <div style={styles.card}>
         
-        {/* NEW: Static Begena Image at the Top */}
+        {/* Banner image shifted upward via objectPosition */}
         <img 
-          src="/begena.png" // Referenced from the public/ folder
+          src="/begena.jpg" 
           alt="በገና (Begena)" 
           style={styles.topImage} 
         />
@@ -104,33 +99,32 @@ export default function App() {
   );
 }
 
-// Updated Styles
 const styles = {
   container: {
     minHeight: "100vh",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0f1117", // Dark background
+    backgroundColor: "#0f1117",
     color: "#ffffff",
-    // Prioritize Noto Sans Ethiopic for Amharic text
-    fontFamily: "'Noto Sans Ethiopic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    fontFamily: "'Noto Sans Ethiopic', -apple-system, BlinkMacSystemFont, sans-serif",
     padding: "20px",
   },
   card: {
     width: "100%",
     maxWidth: "400px",
-    backgroundColor: "rgba(255, 255, 255, 0.05)", // Semi-transparent glass effect
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     border: "1px solid rgba(255, 255, 255, 0.1)",
     borderRadius: "16px",
-    overflow: "hidden", // Important for image corners
+    overflow: "hidden",
     backdropFilter: "blur(10px)",
     boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
   },
   topImage: {
     width: "100%",
-    height: "200px", // Fixed height for the top banner
-    objectFit: "cover", // Ensures the image fills the area well
+    height: "190px",
+    objectFit: "cover",
+    objectPosition: "center 20%", // Moves the image focus upward
     borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
   },
   content: {
@@ -147,7 +141,6 @@ const styles = {
     fontSize: "13px",
     color: "#a0a0a0",
     margin: "0 0 24px 0",
-    lineHeight: "1.4",
   },
   form: {
     display: "flex",
@@ -173,19 +166,17 @@ const styles = {
     color: "#ffffff",
     fontSize: "15px",
     outline: "none",
-    transition: "border-color 0.2s",
   },
   button: {
     padding: "14px",
     borderRadius: "10px",
-    backgroundColor: "#d97706", // Amber/Gold color
+    backgroundColor: "#d97706",
     color: "#ffffff",
     fontSize: "15px",
     fontWeight: "600",
     border: "none",
     cursor: "pointer",
     marginTop: "8px",
-    transition: "background-color 0.2s",
   },
   errorMsg: {
     fontSize: "13px",

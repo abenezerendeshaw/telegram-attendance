@@ -1,5 +1,17 @@
 // api/submit.js
 import axios from "axios";
+import { toEthiopic } from "ethiopian-date";
+
+// Ethiopian month names in Amharic
+const ETHIOPIAN_MONTHS = [
+  "መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት",
+  "መጋቢት", "ሚያዝያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"
+];
+
+// Ethiopian weekdays in Amharic
+const ETHIOPIAN_DAYS = [
+  "እሑድ", "ሰኞ", "ማክሰኞ", "ረቡዕ", "ሐሙስ", "ዓርብ", "ቅዳሜ"
+];
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -20,37 +32,44 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: "የሰርቨር ውቅር ስህተት አጋጥሟል።" });
     }
 
-    // Amharic Date & Time formatting
     const now = new Date();
-    const formattedDate = now.toLocaleDateString("am-ET", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    
+    // Convert Gregorian Date to Ethiopian Date
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1; // 1 - 12
+    const day = now.getDate();
+
+    const [ethYear, ethMonth, ethDay] = toEthiopic(year, month, day);
+    
+    const dayOfWeek = ETHIOPIAN_DAYS[now.getDay()];
+    const monthName = ETHIOPIAN_MONTHS[ethMonth - 1];
+
+    // Formatted Ethiopian Date String (e.g. ሐሙስ፣ ሐምሌ 24 ቀን 2018 ዓ.ም)
+    const ethioFormattedDate = `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
+
+    // Localized Time Format
     const formattedTime = now.toLocaleTimeString("am-ET", {
       hour: "2-digit",
       minute: "2-digit",
     });
 
-    // Amharic Attendance Message Format (Text Only)
+    // Attendance Telegram Message
     const attendanceMessage = `
 🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*
 
 👤 *ሙሉ ስም:* ${fullName.trim()}
 ✅ *ሁኔታ:* ተገኝቷል / ተገኝታለች
-📅 *ቀን:* ${formattedDate}
+📅 *ቀን:* ${ethioFormattedDate}
 ⏰ *ሰዓት:* ${formattedTime}
     `.trim();
 
-    // Send Text Message to Telegram Group
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       chat_id: CHAT_ID,
       text: attendanceMessage,
       parse_mode: "Markdown",
     });
 
-    return res.status(200).json({ success: true, message: "መገኘትዎ በተካከለ ተመዝግቧል!" });
+    return res.status(200).json({ success: true, message: "መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል!" });
   } catch (error) {
     console.error("Telegram API Error:", error.response?.data || error.message);
     return res.status(500).json({
