@@ -1,20 +1,25 @@
 // src/App.jsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { STUDENTS } from "./students";
 
 export default function App() {
-  const [fullName, setFullName] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [attendanceStatus, setAttendanceStatus] = useState("present");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
-  
-  // 24-hour Lock States
+
+  // 24-hour Lock State
   const [isLocked, setIsLocked] = useState(false);
   const [hoursLeft, setHoursLeft] = useState(0);
 
+  const dropdownRef = useRef(null);
+
   useEffect(() => {
-    // Check 24-hour lock status
+    // Check local storage for existing submission within the last 24 hours
     const checkLockStatus = () => {
       const lastSubmission = localStorage.getItem("last_attendance_timestamp");
       if (lastSubmission) {
@@ -35,19 +40,32 @@ export default function App() {
 
     checkLockStatus();
 
-    // Telegram WebApp Setup
+    // Close the autocomplete dropdown when clicking outside
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+
+    // Initialize Telegram WebApp viewport if running inside Telegram
     if (window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp;
       tg.ready();
       tg.expand();
-
-      const user = tg.initDataUnsafe?.user;
-      if (user) {
-        const telegramName = `${user.first_name || ""} ${user.last_name || ""}`.trim();
-        if (telegramName) setFullName(telegramName);
-      }
     }
+
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Filter students by matching input against Amharic name OR English phonetic string
+  const filteredStudents = STUDENTS.filter((s) => {
+    const query = searchTerm.toLowerCase().trim();
+    if (!query) return true;
+    const matchesAmharic = s.name.includes(query);
+    const matchesEnglish = s.englishName?.toLowerCase().includes(query);
+    return matchesAmharic || matchesEnglish;
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,13 +78,19 @@ export default function App() {
       return;
     }
 
-    if (!fullName.trim()) {
-      setStatus({ type: "error", message: "እባክዎ ሙሉ ስምዎን ያስገቡ።" });
+    if (!selectedStudent) {
+      setStatus({
+        type: "error",
+        message: "እባክዎ ስምዎን ከተዘረዘሩት ውስጥ ይፈልጉና ይምረጡ።",
+      });
       return;
     }
 
     if (attendanceStatus === "permission" && !reason.trim()) {
-      setStatus({ type: "error", message: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።" });
+      setStatus({
+        type: "error",
+        message: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።",
+      });
       return;
     }
 
@@ -75,12 +99,13 @@ export default function App() {
 
     try {
       await axios.post("/api/submit", {
-        fullName,
+        fullName: selectedStudent.name,
+        group: selectedStudent.group,
         status: attendanceStatus,
         reason: attendanceStatus === "permission" ? reason : "",
       });
 
-      // Set 24 hour cooldown lock
+      // Record timestamp to lock form for 24 hours
       const nowTimestamp = Date.now();
       localStorage.setItem("last_attendance_timestamp", nowTimestamp.toString());
       setIsLocked(true);
@@ -88,6 +113,7 @@ export default function App() {
 
       setStatus({ type: "success", message: "✅ መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
 
+      // Automatically close Telegram WebApp window if embedded
       if (window.Telegram?.WebApp) {
         setTimeout(() => {
           window.Telegram.WebApp.close();
@@ -97,7 +123,8 @@ export default function App() {
       console.error(err);
       setStatus({
         type: "error",
-        message: err.response?.data?.message || "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
+        message:
+          err.response?.data?.message || "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
       });
     } finally {
       setLoading(false);
@@ -107,38 +134,79 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <img src="/begena.png" alt="በገና (Begena)" style={styles.topImage} />
+        <img src="/begena.jpg" alt="በገና (Begena)" style={styles.topImage} />
 
         <div style={styles.content}>
           <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝገብ</h1>
-          <p style={styles.subtitle}>ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።</p>
+          <p style={styles.subtitle}>
+            ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።
+          </p>
 
           {isLocked ? (
             <div style={styles.lockNotice}>
               <div style={styles.lockIcon}>⏳</div>
               <h3 style={styles.lockTitle}>ለዛሬ መዝግበዋል!</h3>
               <p style={styles.lockText}>
-                የዛሬው መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል። የሚቀጥለውን መዝገብ ለማስገባት ከ <strong>{hoursLeft} ሰዓታት</strong> በኋላ ድጋሚ ይሞክሩ።
+                የዛሬው መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል። የሚቀጥለውን መዝገብ ለማስገባት ከ{" "}
+                <strong>{hoursLeft} ሰዓታት</strong> በኋላ ድጋሚ ይሞክሩ።
               </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} style={styles.form}>
-              {/* Full Name Field */}
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>ሙሉ ስም</label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => {
-                    setFullName(e.target.value);
-                    if (status.type) setStatus({ type: "", message: "" });
-                  }}
-                  placeholder="ምሳሌ፡ አበበ በቀለ"
-                  style={styles.input}
-                />
+              {/* Bilingual Search Container */}
+              <div style={styles.inputGroup} ref={dropdownRef}>
+                <label style={styles.label}>ስምዎን ይፈልጉ / Search Name</label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="text"
+                    placeholder="በአማርኛ ወይም በEnglish ይፃፉ..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setSelectedStudent(null);
+                      setIsOpen(true);
+                      if (status.type) setStatus({ type: "", message: "" });
+                    }}
+                    onFocus={() => setIsOpen(true)}
+                    style={styles.input}
+                  />
+
+                  {/* Dropdown Suggestions */}
+                  {isOpen && (
+                    <ul style={styles.dropdownList}>
+                      {filteredStudents.length > 0 ? (
+                        filteredStudents.slice(0, 30).map((st, idx) => (
+                          <li
+                            key={idx}
+                            onClick={() => {
+                              setSelectedStudent(st);
+                              setSearchTerm(st.name);
+                              setIsOpen(false);
+                            }}
+                            style={styles.dropdownItem}
+                          >
+                            <span style={{ fontWeight: "600" }}>{st.name}</span>
+                            <span style={styles.groupSubTag}>{st.group}</span>
+                          </li>
+                        ))
+                      ) : (
+                        <li style={styles.noResultItem}>
+                          ምንም አልተገኘም (No match found)
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                </div>
               </div>
 
-              {/* Attendance Status Dropdown */}
+              {/* Show Detected Group */}
+              {selectedStudent && (
+                <div style={styles.groupBadge}>
+                  📍 <strong>ቡድን:</strong> {selectedStudent.group}
+                </div>
+              )}
+
+              {/* Attendance Choice */}
               <div style={styles.inputGroup}>
                 <label style={styles.label}>የመገኘት ሁኔታ</label>
                 <select
@@ -154,7 +222,7 @@ export default function App() {
                 </select>
               </div>
 
-              {/* Conditional Reason Field */}
+              {/* Permission Reason Field */}
               {attendanceStatus === "permission" && (
                 <div style={styles.inputGroup}>
                   <label style={styles.label}>የፈቃድ ምክንያት</label>
@@ -171,8 +239,15 @@ export default function App() {
                 </div>
               )}
 
+              {/* Error/Success Messages */}
               {status.message && (
-                <p style={status.type === "error" ? styles.errorMsg : styles.successMsg}>
+                <p
+                  style={
+                    status.type === "error"
+                      ? styles.errorMsg
+                      : styles.successMsg
+                  }
+                >
                   {status.message}
                 </p>
               )}
@@ -196,12 +271,13 @@ const styles = {
     justifyContent: "center",
     backgroundColor: "#0f1117",
     color: "#ffffff",
-    fontFamily: "'Noto Sans Ethiopic', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontFamily:
+      "'Noto Sans Ethiopic', -apple-system, BlinkMacSystemFont, sans-serif",
     padding: "20px",
   },
   card: {
     width: "100%",
-    maxWidth: "400px",
+    maxWidth: "420px",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     border: "1px solid rgba(255, 255, 255, 0.1)",
     borderRadius: "16px",
@@ -211,7 +287,7 @@ const styles = {
   },
   topImage: {
     width: "100%",
-    height: "190px",
+    height: "180px",
     objectFit: "cover",
     objectPosition: "center 20%",
     borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
@@ -229,7 +305,7 @@ const styles = {
   subtitle: {
     fontSize: "13px",
     color: "#a0a0a0",
-    margin: "0 0 24px 0",
+    margin: "0 0 20px 0",
   },
   lockNotice: {
     backgroundColor: "rgba(217, 119, 6, 0.1)",
@@ -271,25 +347,76 @@ const styles = {
     color: "#cccccc",
   },
   input: {
-    padding: "12px 16px",
-    borderRadius: "10px",
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    border: "1px solid rgba(255, 255, 255, 0.2)",
-    color: "#ffffff",
-    fontSize: "15px",
-    outline: "none",
-  },
-  select: {
+    width: "100%",
     padding: "12px 16px",
     borderRadius: "10px",
     backgroundColor: "#1f2430",
     border: "1px solid rgba(255, 255, 255, 0.2)",
     color: "#ffffff",
-    fontSize: "15px",
+    fontSize: "14px",
     outline: "none",
+    boxSizing: "border-box",
+  },
+  dropdownList: {
+    position: "absolute",
+    top: "108%",
+    left: 0,
+    right: 0,
+    maxHeight: "200px",
+    overflowY: "auto",
+    backgroundColor: "#191d26",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    borderRadius: "10px",
+    listStyle: "none",
+    padding: "0",
+    margin: "0",
+    zIndex: 100,
+    boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+  },
+  dropdownItem: {
+    padding: "12px 14px",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
     cursor: "pointer",
+    fontSize: "14px",
+    color: "#ffffff",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  groupSubTag: {
+    fontSize: "11px",
+    color: "#a0a0a0",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    padding: "2px 6px",
+    borderRadius: "4px",
+  },
+  noResultItem: {
+    padding: "12px 14px",
+    fontSize: "13px",
+    color: "#888888",
+    textAlign: "center",
+  },
+  groupBadge: {
+    backgroundColor: "rgba(217, 119, 6, 0.15)",
+    border: "1px solid rgba(217, 119, 6, 0.4)",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    fontSize: "13px",
+    color: "#fbbf24",
+  },
+  select: {
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: "10px",
+    backgroundColor: "#1f2430",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    color: "#ffffff",
+    fontSize: "14px",
+    outline: "none",
+    boxSizing: "border-box",
   },
   textarea: {
+    width: "100%",
     padding: "12px 16px",
     borderRadius: "10px",
     backgroundColor: "rgba(255, 255, 255, 0.08)",
@@ -299,6 +426,7 @@ const styles = {
     outline: "none",
     resize: "none",
     fontFamily: "inherit",
+    boxSizing: "border-box",
   },
   button: {
     padding: "14px",
