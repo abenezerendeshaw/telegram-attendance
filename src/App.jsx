@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 export default function App() {
   const [fullName, setFullName] = useState("");
@@ -7,6 +7,16 @@ export default function App() {
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
+  const [alreadySubmitted, setAlreadySubmitted] = useState(false);
+
+  // Check if student already submitted TODAY on load
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const savedSubmission = localStorage.getItem(`attendance_submitted_${todayStr}`);
+    if (savedSubmission) {
+      setAlreadySubmitted(true);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,7 +34,6 @@ export default function App() {
 
     setLoading(true);
 
-    // Get GPS coordinates if status is "present"
     if (status === "present") {
       if (!navigator.geolocation) {
         setMessage({
@@ -58,7 +67,6 @@ export default function App() {
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      // Permission request does not require GPS
       const payload = { fullName, group, status, reason };
       await sendSubmission(payload);
     }
@@ -75,6 +83,11 @@ export default function App() {
       const data = await res.json();
 
       if (res.ok) {
+        // Save today's date into browser local storage
+        const todayStr = new Date().toISOString().split("T")[0];
+        localStorage.setItem(`attendance_submitted_${todayStr}`, "true");
+        setAlreadySubmitted(true);
+
         setMessage({ type: "success", text: data.message });
         setFullName("");
         setReason("");
@@ -105,55 +118,67 @@ export default function App() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <label style={styles.label}>ሙሉ ስም (Full Name)</label>
-          <input
-            type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="ምሳሌ፡ አበበ ከበደ"
-            style={styles.input}
-            required
-          />
+        {alreadySubmitted ? (
+          <div style={styles.completedBox}>
+            <p style={{ fontSize: "2rem", margin: "0 0 10px 0" }}>✅</p>
+            <p style={{ fontWeight: "bold", color: "#166534", margin: 0 }}>
+              የዛሬው መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል!
+            </p>
+            <p style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: "8px" }}>
+              በአንድ ቀን ውስጥ ከአንድ ጊዜ በላይ መመዝገብ አይቻልም።
+            </p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <label style={styles.label}>ሙሉ ስም (Full Name)</label>
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="ምሳሌ፡ አበበ ከበደ"
+              style={styles.input}
+              required
+            />
 
-          <label style={styles.label}>ቡድን (Group)</label>
-          <select
-            value={group}
-            onChange={(e) => setGroup(e.target.value)}
-            style={styles.input}
-          >
-            <option value="">-- ቡድን ይምረጡ --</option>
-            <option value="ቡድን 1: ቤተ አውታር">ቡድን 1: ቤተ አውታር</option>
-            <option value="ቡድን 2: ቤተ ማዕዶት">ቡድን 2: ቤተ ማዕዶት</option>
-          </select>
+            <label style={styles.label}>ቡድን (Group)</label>
+            <select
+              value={group}
+              onChange={(e) => setGroup(e.target.value)}
+              style={styles.input}
+            >
+              <option value="">-- ቡድን ይምረጡ --</option>
+              <option value="ቡድን 1: ቤተ አውታር">ቡድን 1: ቤተ አውታር</option>
+              <option value="ቡድን 2: ቤተ ማዕዶት">ቡድን 2: ቤተ ማዕዶት</option>
+            </select>
 
-          <label style={styles.label}>ሁኔታ (Status)</label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            style={styles.input}
-          >
-            <option value="present">ተገኝቻለሁ (Present)</option>
-            <option value="permission">ፈቃድ እጠይቃለሁ (Permission)</option>
-          </select>
+            <label style={styles.label}>ሁኔታ (Status)</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              style={styles.input}
+            >
+              <option value="present">ተገኝቻለሁ (Present)</option>
+              <option value="permission">ፈቃድ እጠይቃለሁ (Permission)</option>
+            </select>
 
-          {status === "permission" && (
-            <>
-              <label style={styles.label}>የፈቃድ ምክንያት (Reason)</label>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="እባክዎ ምክንያትዎን እዚህ ይፃፉ..."
-                style={{ ...styles.input, height: "80px" }}
-                required
-              />
-            </>
-          )}
+            {status === "permission" && (
+              <>
+                <label style={styles.label}>የፈቃድ ምክንያት (Reason)</label>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="እባክዎ ምክንያትዎን እዚህ ይፃፉ..."
+                  style={{ ...styles.input, height: "80px" }}
+                  required
+                />
+              </>
+            )}
 
-          <button type="submit" disabled={loading} style={styles.button}>
-            {loading ? "በማረጋገጥ ላይ..." : "መዝግብ (Submit)"}
-          </button>
-        </form>
+            <button type="submit" disabled={loading} style={styles.button}>
+              {loading ? "በማረጋገጥ ላይ..." : "መዝግብ (Submit)"}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -209,5 +234,12 @@ const styles = {
     marginBottom: "12px",
     fontSize: "0.9rem",
     textAlign: "center",
+  },
+  completedBox: {
+    textAlign: "center",
+    padding: "24px",
+    backgroundColor: "#f0fdf4",
+    borderRadius: "8px",
+    border: "1px solid #bbf7d0",
   },
 };
