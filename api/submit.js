@@ -68,10 +68,6 @@ export default async function handler(req, res) {
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-    
-    // Read Topic IDs from environment variables
-    const TOPIC_PRESENT = process.env.TELEGRAM_TOPIC_PRESENT;
-    const TOPIC_PERMISSION = process.env.TELEGRAM_TOPIC_PERMISSION;
 
     if (!BOT_TOKEN || !CHAT_ID) {
       return res.status(500).json({ message: "የሰርቨር ውቅር ስህተት አጋጥሟል።" });
@@ -88,9 +84,6 @@ export default async function handler(req, res) {
     const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
     const groupText = group && group.trim() ? group.trim() : "ያልተጠቀሰ";
 
-    // Select target Topic ID based on attendance status
-    const targetTopicId = isPresent ? TOPIC_PRESENT : TOPIC_PERMISSION;
-
     // Telegram Message Output Format
     let attendanceMessage = 
       `🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*\n\n` +
@@ -104,16 +97,23 @@ export default async function handler(req, res) {
       attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${reason.trim()}`;
     }
 
-    // Build API payload
+    // Select raw topic ID based on status
+    const rawTopicId = isPresent
+      ? process.env.TELEGRAM_TOPIC_PRESENT
+      : process.env.TELEGRAM_TOPIC_PERMISSION;
+
     const payload = {
       chat_id: CHAT_ID,
       text: attendanceMessage,
       parse_mode: "Markdown",
     };
 
-    // Attach message_thread_id if topic routing is set up
-    if (targetTopicId) {
-      payload.message_thread_id = parseInt(targetTopicId, 10);
+    // Safely parse and attach message_thread_id if present and non-zero
+    if (rawTopicId) {
+      const topicId = parseInt(rawTopicId, 10);
+      if (!isNaN(topicId) && topicId > 0) {
+        payload.message_thread_id = topicId;
+      }
     }
 
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, message: "መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
   } catch (error) {
     const errorDetails = error.response?.data || error.message;
-    console.error("Telegram API Error:", errorDetails);
+    console.error("Telegram API Error Details:", errorDetails);
     return res.status(500).json({
       message: "መዝገቡን ማስገባት አልተቻለም።",
       error: typeof errorDetails === "object" ? JSON.stringify(errorDetails) : errorDetails,
