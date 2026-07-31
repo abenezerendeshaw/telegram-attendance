@@ -1,14 +1,14 @@
 // api/cron/mark-absents.js
 import axios from "axios";
 import { STUDENTS } from "../../src/students.js";
+import { attendanceStore } from "../../lib/store.js";
 
 export default async function handler(req, res) {
-  // 1. Allow manual testing via query parameter ?test=true OR standard Vercel Cron header
   const isTest = req.query.test === "true";
   const authHeader = req.headers.authorization;
-  const isVercelCron = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  const isVercelCron =
+    process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
 
-  // If CRON_SECRET is set, require either the Vercel header OR ?test=true in browser
   if (process.env.CRON_SECRET && !isVercelCron && !isTest) {
     return res.status(401).json({ message: "Unauthorized Cron Execution" });
   }
@@ -24,13 +24,22 @@ export default async function handler(req, res) {
       });
     }
 
-    // Identify absent students (filters against today's submitters)
-    const submittedNames = new Set([]); 
+    // 1. Get real names of students who registered today
+    const submittedNames = attendanceStore.getSubmittedNames();
+
+    // 2. Filter ONLY students who DID NOT submit today
     const absentStudents = STUDENTS.filter(
       (s) => !submittedNames.has(s.name.trim().toLowerCase())
     );
 
-    // Group by student group
+    if (absentStudents.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "ሁሉም ተማሪዎች ተመዝግበዋል። የቀረ የለም! (All students present/permitted today)",
+      });
+    }
+
+    // 3. Group absent students by group name
     const groupedAbsents = absentStudents.reduce((acc, student) => {
       const grp = student.group || "ያልተመደበ";
       if (!acc[grp]) acc[grp] = [];
@@ -38,7 +47,7 @@ export default async function handler(req, res) {
       return acc;
     }, {});
 
-    // Format message
+    // 4. Format Telegram Markdown Message
     let message = `⚠️ *የዛሬ የቀሩ ተማሪዎች መዝገብ (Absent List)*\n\n`;
     message += `❌ *ጠቅላላ የቀሩ ተማሪዎች:* ${absentStudents.length}\n`;
     message += `──────────────────────\n\n`;
@@ -64,16 +73,26 @@ export default async function handler(req, res) {
       }
     }
 
-    // Send to Telegram
-    const response = await axios.post(
+    // 5. Send message to Telegram
+    const telegramRes = await axios.post(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
       payload
     );
 
     return res.status(200).json({
       success: true,
-      message: "Absent summary posted to Telegram!",
-      telegramResponse: response.data,
+      timestamp: new Date().toISOString(),
+      summary: {
+        totalStudents: STUDENTS.length,
+        submittedCount: submittedNames.size,
+        totalAbsents: absentStudents.length,
+      },
+      submittedNames: Array.from(submittedNames),
+      groupedAbsents,
+      telegramStatus: {
+        ok: telegramRes.data.ok,
+        messageId: telegramRes.data.result?.message_id,
+      },
     });
   } catch (error) {
     console.error("Cron Error:", error.response?.data || error.message);

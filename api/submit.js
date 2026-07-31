@@ -1,6 +1,6 @@
 // api/submit.js
 import axios from "axios";
-
+import { attendanceStore } from "../../lib/store.js";
 // In-memory record tracking
 const dailySubmissions = new Map();
 
@@ -174,6 +174,7 @@ const now = new Date();
       }
     }
 
+    attendanceStore.addStudent(fullName);
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
 
     dailySubmissions.set(userKey, true);
