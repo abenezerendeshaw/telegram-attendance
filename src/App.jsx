@@ -134,7 +134,7 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <img src="/begena.jpg" alt="በገና (Begena)" style={styles.topImage} />
+        <img src="/begena.png" alt="በገና (Begena)" style={styles.topImage} />
 
         <div style={styles.content}>
           <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝገብ</h1>

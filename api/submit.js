@@ -56,7 +56,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { fullName, status, reason } = req.body;
+    const { fullName, group, status, reason } = req.body;
 
     if (!fullName || !fullName.trim()) {
       return res.status(400).json({ message: "ሙሉ ስም ማስገባት አስፈላጊ ነው።" });
@@ -83,19 +83,21 @@ export default async function handler(req, res) {
     const isPresent = status === "present";
     const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
     
-    // Telegram Message Output Format
-    let attendanceMessage = `
-🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*
+    // Format group output (fallback if empty)
+    const groupText = group && group.trim() ? group.trim() : "ያልተጠቀሰ";
 
-👤 *ሙሉ ስም:* ${fullName.trim()}
-✅ *ሁኔታ:* ${statusText}
-📅 *ቀን:* ${ethioFormattedDate}
-⏰ *ሰዓት:* ${formattedTime}
-`.trim();
+    // Telegram Message Output Format with Tab Alignment (\u2001)
+    let attendanceMessage = 
+      `🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*\n\n` +
+      `👤 *ሙሉ ስም:*\u2001\u2001${fullName.trim()}\n` +
+      `📍 *ቡድን:*\u2001\u2001\u2001${groupText}\n` +
+      `📊 *ሁኔታ:*\u2001\u2001\u2001${statusText}\n` +
+      `📅 *ቀን:*\u2001\u2001\u2001\u2001${ethioFormattedDate}\n` +
+      `⏰ *ሰዓት:*\u2001\u2001\u2001${formattedTime}`;
 
-    // Attach reason when present
+    // Attach reason when requesting permission
     if (!isPresent && reason && reason.trim()) {
-      attendanceMessage += `\n💬 *ምክንያት:* ${reason.trim()}`;
+      attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${reason.trim()}`;
     }
 
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
