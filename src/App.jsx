@@ -1,3 +1,4 @@
+// src/App.jsx
 import { useState, useEffect } from "react";
 import axios from "axios";
 
@@ -6,13 +7,14 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
 
-  // Optional: Auto-fill name if user opens this inside Telegram Mini App
   useEffect(() => {
+    // Basic Telegram WebApp setup
     if (window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp;
       tg.ready();
       tg.expand();
 
+      // Optional: Auto-fill name if available
       const user = tg.initDataUnsafe?.user;
       if (user) {
         const telegramName = `${user.first_name || ""} ${user.last_name || ""}`.trim();
@@ -25,7 +27,7 @@ export default function App() {
     e.preventDefault();
 
     if (!fullName.trim()) {
-      setStatus({ type: "error", message: "Please enter your full name." });
+      setStatus({ type: "error", message: "እባክዎ ሙሉ ስምዎን ያስገቡ።" });
       return;
     }
 
@@ -33,11 +35,13 @@ export default function App() {
     setStatus({ type: "", message: "" });
 
     try {
+      // POST request to our Vercel Serverless Function
       await axios.post("/api/submit", { fullName });
-      setStatus({ type: "success", message: "✅ Attendance marked successfully!" });
-      setFullName(""); // Reset input
+      
+      setStatus({ type: "success", message: "✅ መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል!" });
+      setFullName(""); // Clear input
 
-      // Close Telegram Mini App if open after 2 seconds
+      // Close the Web App after a short delay
       if (window.Telegram?.WebApp) {
         setTimeout(() => {
           window.Telegram.WebApp.close();
@@ -47,7 +51,7 @@ export default function App() {
       console.error(err);
       setStatus({
         type: "error",
-        message: err.response?.data?.message || "Something went wrong. Try again.",
+        message: err.response?.data?.message || "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
       });
     } finally {
       setLoading(false);
@@ -57,77 +61,99 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h1 style={styles.title}>🎓 Class Attendance</h1>
-        <p style={styles.subtitle}>Mark yourself as Present for today's session.</p>
+        
+        {/* NEW: Static Begena Image at the Top */}
+        <img 
+          src="/begena.png" // Referenced from the public/ folder
+          alt="በገና (Begena)" 
+          style={styles.topImage} 
+        />
 
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>Full Name</label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => {
-                setFullName(e.target.value);
-                if (status.type) setStatus({ type: "", message: "" });
-              }}
-              placeholder="e.g. John Doe"
-              style={styles.input}
-            />
-          </div>
+        <div style={styles.content}>
+          <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝገብ</h1>
+          <p style={styles.subtitle}>ለዛሬው ክፍለ ጊዜ መገኘትዎን እዚህ ያረጋግጡ።</p>
 
-          {status.message && (
-            <p style={status.type === "error" ? styles.errorMsg : styles.successMsg}>
-              {status.message}
-            </p>
-          )}
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>ሙሉ ስም</label>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => {
+                  setFullName(e.target.value);
+                  if (status.type) setStatus({ type: "", message: "" });
+                }}
+                placeholder="ምሳሌ፡ አበበ በቀለ"
+                style={styles.input}
+              />
+            </div>
 
-          <button type="submit" disabled={loading} style={styles.button}>
-            {loading ? "Marking Present..." : "MARK PRESENT"}
-          </button>
-        </form>
+            {status.message && (
+              <p style={status.type === "error" ? styles.errorMsg : styles.successMsg}>
+                {status.message}
+              </p>
+            )}
+
+            <button type="submit" disabled={loading} style={styles.button}>
+              {loading ? "በመመዝገብ ላይ..." : "መገኘቴን አረጋግጥ"}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
 }
 
-// Inline styles for rapid setup (no external CSS needed)
+// Updated Styles
 const styles = {
   container: {
     minHeight: "100vh",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0f1117",
+    backgroundColor: "#0f1117", // Dark background
     color: "#ffffff",
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    // Prioritize Noto Sans Ethiopic for Amharic text
+    fontFamily: "'Noto Sans Ethiopic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
     padding: "20px",
   },
   card: {
     width: "100%",
     maxWidth: "400px",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)", // Semi-transparent glass effect
     border: "1px solid rgba(255, 255, 255, 0.1)",
     borderRadius: "16px",
-    padding: "28px 24px",
+    overflow: "hidden", // Important for image corners
     backdropFilter: "blur(10px)",
     boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
   },
-  title: {
-    fontSize: "22px",
-    fontWeight: "700",
+  topImage: {
+    width: "100%",
+    height: "200px", // Fixed height for the top banner
+    objectFit: "cover", // Ensures the image fills the area well
+    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+  },
+  content: {
+    padding: "24px",
     textAlign: "center",
+  },
+  title: {
+    fontSize: "20px",
+    fontWeight: "700",
     margin: "0 0 6px 0",
+    color: "#ffffff",
   },
   subtitle: {
-    fontSize: "14px",
+    fontSize: "13px",
     color: "#a0a0a0",
-    textAlign: "center",
     margin: "0 0 24px 0",
+    lineHeight: "1.4",
   },
   form: {
     display: "flex",
     flexDirection: "column",
     gap: "16px",
+    textAlign: "left",
   },
   inputGroup: {
     display: "flex",
@@ -147,17 +173,19 @@ const styles = {
     color: "#ffffff",
     fontSize: "15px",
     outline: "none",
+    transition: "border-color 0.2s",
   },
   button: {
     padding: "14px",
     borderRadius: "10px",
-    backgroundColor: "#4274D9",
+    backgroundColor: "#d97706", // Amber/Gold color
     color: "#ffffff",
     fontSize: "15px",
     fontWeight: "600",
     border: "none",
     cursor: "pointer",
     marginTop: "8px",
+    transition: "background-color 0.2s",
   },
   errorMsg: {
     fontSize: "13px",

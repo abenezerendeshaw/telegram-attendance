@@ -1,7 +1,7 @@
+// api/submit.js
 import axios from "axios";
 
 export default async function handler(req, res) {
-  // 1. Restrict to POST method only
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
@@ -9,55 +9,53 @@ export default async function handler(req, res) {
   try {
     const { fullName } = req.body;
 
-    // 2. Input validation
     if (!fullName || !fullName.trim()) {
-      return res.status(400).json({ message: "Full name is required." });
+      return res.status(400).json({ message: "ሙሉ ስም ማስገባት አስፈላጊ ነው።" });
     }
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
     if (!BOT_TOKEN || !CHAT_ID) {
-      console.error("Missing Telegram environment variables.");
-      return res.status(500).json({ message: "Server configuration error." });
+      return res.status(500).json({ message: "የሰርቨር ውቅር ስህተት አጋጥሟል።" });
     }
 
-    // 3. Format automatic date & time in local format
+    // Amharic Date & Time formatting
     const now = new Date();
-    const formattedDate = now.toLocaleDateString("en-US", {
-      weekday: "short",
+    const formattedDate = now.toLocaleDateString("am-ET", {
+      weekday: "long",
       year: "numeric",
-      month: "short",
+      month: "long",
       day: "numeric",
     });
-    const formattedTime = now.toLocaleTimeString("en-US", {
+    const formattedTime = now.toLocaleTimeString("am-ET", {
       hour: "2-digit",
       minute: "2-digit",
     });
 
-    // 4. Construct Telegram message payload
+    // Amharic Attendance Message Format (Text Only)
     const attendanceMessage = `
-📋 *CLASS ATTENDANCE RECORD*
+🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*
 
-👤 *Name:* ${fullName.trim()}
-✅ *Status:* Present
-📅 *Date:* ${formattedDate}
-⏰ *Time:* ${formattedTime}
+👤 *ሙሉ ስም:* ${fullName.trim()}
+✅ *ሁኔታ:* ተገኝቷል / ተገኝታለች
+📅 *ቀን:* ${formattedDate}
+⏰ *ሰዓት:* ${formattedTime}
     `.trim();
 
-    // 5. Send payload to Telegram Channel via Bot API
+    // Send Text Message to Telegram Group
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       chat_id: CHAT_ID,
       text: attendanceMessage,
       parse_mode: "Markdown",
     });
 
-    return res.status(200).json({ success: true, message: "Attendance marked successfully!" });
+    return res.status(200).json({ success: true, message: "መገኘትዎ በተካከለ ተመዝግቧል!" });
   } catch (error) {
     console.error("Telegram API Error:", error.response?.data || error.message);
     return res.status(500).json({
-      message: "Failed to record attendance.",
-      error: error.message,
+      message: "መገኘት መመዝገብ አልተቻለም።",
+      error: error.response?.data || error.message,
     });
   }
 }
