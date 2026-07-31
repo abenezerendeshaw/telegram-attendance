@@ -68,6 +68,10 @@ export default async function handler(req, res) {
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+    
+    // Read Topic IDs from environment variables
+    const TOPIC_PRESENT = process.env.TELEGRAM_TOPIC_PRESENT;
+    const TOPIC_PERMISSION = process.env.TELEGRAM_TOPIC_PERMISSION;
 
     if (!BOT_TOKEN || !CHAT_ID) {
       return res.status(500).json({ message: "የሰርቨር ውቅር ስህተት አጋጥሟል።" });
@@ -82,11 +86,12 @@ export default async function handler(req, res) {
 
     const isPresent = status === "present";
     const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
-    
-    // Format group output (fallback if empty)
     const groupText = group && group.trim() ? group.trim() : "ያልተጠቀሰ";
 
-    // Telegram Message Output Format with Tab Alignment (\u2001)
+    // Select target Topic ID based on attendance status
+    const targetTopicId = isPresent ? TOPIC_PRESENT : TOPIC_PERMISSION;
+
+    // Telegram Message Output Format
     let attendanceMessage = 
       `🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*\n\n` +
       `👤 *ሙሉ ስም:*\u2001\u2001${fullName.trim()}\n` +
@@ -95,16 +100,23 @@ export default async function handler(req, res) {
       `📅 *ቀን:*\u2001\u2001\u2001\u2001${ethioFormattedDate}\n` +
       `⏰ *ሰዓት:*\u2001\u2001\u2001${formattedTime}`;
 
-    // Attach reason when requesting permission
     if (!isPresent && reason && reason.trim()) {
       attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${reason.trim()}`;
     }
 
-    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    // Build API payload
+    const payload = {
       chat_id: CHAT_ID,
       text: attendanceMessage,
       parse_mode: "Markdown",
-    });
+    };
+
+    // Attach message_thread_id if topic routing is set up
+    if (targetTopicId) {
+      payload.message_thread_id = parseInt(targetTopicId, 10);
+    }
+
+    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
 
     return res.status(200).json({ success: true, message: "መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
   } catch (error) {
