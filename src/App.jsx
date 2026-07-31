@@ -14,13 +14,13 @@ export default function App() {
   const [hoursLeft, setHoursLeft] = useState(0);
 
   useEffect(() => {
-    // 1. Check if 24 hours have passed since last submission
+    // Check 24-hour lock status
     const checkLockStatus = () => {
       const lastSubmission = localStorage.getItem("last_attendance_timestamp");
       if (lastSubmission) {
         const now = Date.now();
         const timePassed = now - parseInt(lastSubmission, 10);
-        const twentyFourHours = 24 * 60 * 60 * 1000; // in milliseconds
+        const twentyFourHours = 24 * 60 * 60 * 1000;
 
         if (timePassed < twentyFourHours) {
           const remainingMs = twentyFourHours - timePassed;
@@ -35,7 +35,7 @@ export default function App() {
 
     checkLockStatus();
 
-    // 2. Telegram WebApp Initialization
+    // Telegram WebApp Setup
     if (window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp;
       tg.ready();
@@ -80,7 +80,7 @@ export default function App() {
         reason: attendanceStatus === "permission" ? reason : "",
       });
 
-      // Save current timestamp to localStorage to lock for 24 hours
+      // Set 24 hour cooldown lock
       const nowTimestamp = Date.now();
       localStorage.setItem("last_attendance_timestamp", nowTimestamp.toString());
       setIsLocked(true);
@@ -91,7 +91,7 @@ export default function App() {
       if (window.Telegram?.WebApp) {
         setTimeout(() => {
           window.Telegram.WebApp.close();
-        }, 2500);
+        }, 2000);
       }
     } catch (err) {
       console.error(err);
@@ -107,7 +107,7 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <img src="/begena.jpg" alt="በገና (Begena)" style={styles.topImage} />
+        <img src="/begena.png" alt="በገና (Begena)" style={styles.topImage} />
 
         <div style={styles.content}>
           <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝገብ</h1>
@@ -149,8 +149,8 @@ export default function App() {
                   }}
                   style={styles.select}
                 >
-                  <option value="present">✅ ተገኝቻለሁ (Present)</option>
-                  <option value="permission">📝 ፈቃድ እፈልጋለሁ (Permission)</option>
+                  <option value="present">ተገኝቷል / ተገኝታለች</option>
+                  <option value="permission">ፈቃድ ጠይቋል / ጠይቃለች</option>
                 </select>
               </div>
 

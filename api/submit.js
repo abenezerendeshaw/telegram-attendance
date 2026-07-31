@@ -15,20 +15,11 @@ function getEthiopianDate(date = new Date()) {
   const month = date.getMonth() + 1;
   const day = date.getDate();
 
-  // Gregorian to Ethiopian conversion logic
   let ethYear = year - 8;
   if (month < 9 || (month === 9 && day < 11)) {
     ethYear -= 1;
   }
 
-  let newYearDay = 11;
-  if ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) {
-    if (month > 2) {
-      // Leap year adjustments
-    }
-  }
-
-  // Calculate day difference from Sept 11
   const gregorianMonths = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) {
     gregorianMonths[2] = 29;
@@ -39,7 +30,6 @@ function getEthiopianDate(date = new Date()) {
     dayOfYear += gregorianMonths[m];
   }
 
-  // Sept 11 is day 254 (or 255 in leap year)
   const sep11 = ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) ? 255 : 254;
 
   let ethMonth, ethDay;
@@ -66,18 +56,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { fullName } = req.body;
+    const { fullName, status, reason } = req.body;
 
     if (!fullName || !fullName.trim()) {
       return res.status(400).json({ message: "ሙሉ ስም ማስገባት አስፈላጊ ነው።" });
+    }
+
+    if (status === "permission" && (!reason || !reason.trim())) {
+      return res.status(400).json({ message: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።" });
     }
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
     if (!BOT_TOKEN || !CHAT_ID) {
-      console.error("Missing Environment Variables");
-      return res.status(500).json({ message: "Environment variables missing on Vercel." });
+      return res.status(500).json({ message: "የሰርቨር ውቅር ስህተት አጋጥሟል።" });
     }
 
     const now = new Date();
@@ -87,14 +80,23 @@ export default async function handler(req, res) {
       minute: "2-digit",
     });
 
-    const attendanceMessage = `
+    const isPresent = status === "present";
+    const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
+    
+    // Telegram Message Output Format
+    let attendanceMessage = `
 🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*
 
 👤 *ሙሉ ስም:* ${fullName.trim()}
-✅ *ሁኔታ:* ተገኝቷል / ተገኝታለች
+✅ *ሁኔታ:* ${statusText}
 📅 *ቀን:* ${ethioFormattedDate}
 ⏰ *ሰዓት:* ${formattedTime}
-    `.trim();
+`.trim();
+
+    // Attach reason when present
+    if (!isPresent && reason && reason.trim()) {
+      attendanceMessage += `\n💬 *ምክንያት:* ${reason.trim()}`;
+    }
 
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       chat_id: CHAT_ID,
@@ -102,12 +104,12 @@ export default async function handler(req, res) {
       parse_mode: "Markdown",
     });
 
-    return res.status(200).json({ success: true, message: "መገኘትዎ በተሳካ ሁኔታ ተመዝግቧል!" });
+    return res.status(200).json({ success: true, message: "መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
   } catch (error) {
     const errorDetails = error.response?.data || error.message;
     console.error("Telegram API Error:", errorDetails);
     return res.status(500).json({
-      message: "መገኘት መመዝገብ አልተቻለም።",
+      message: "መዝገቡን ማስገባት አልተቻለም።",
       error: typeof errorDetails === "object" ? JSON.stringify(errorDetails) : errorDetails,
     });
   }
