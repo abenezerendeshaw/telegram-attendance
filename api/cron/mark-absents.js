@@ -2,7 +2,53 @@
 import axios from "axios";
 import { STUDENTS } from "../../src/students.js";
 
+/**
+ * Extracts student names from Telegram message texts posted today.
+ */
+async function getSubmittedNamesFromTelegram(botToken, chatId) {
+  const submittedNames = new Set();
+
+  try {
+    // Fetch recent updates/messages sent to the bot/group
+    const response = await axios.get(
+      `https://api.telegram.org/bot${botToken}/getUpdates`,
+      { params: { limit: 100 } }
+    );
+
+    if (response.data?.ok && Array.isArray(response.data.result)) {
+      const updates = response.data.result;
+      const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD UTC
+
+      updates.forEach((update) => {
+        const msg = update.message || update.channel_post;
+        if (!msg || !msg.text) return;
+
+        // Ensure message belongs to your attendance chat
+        if (String(msg.chat.id) !== String(chatId)) return;
+
+        // Ensure message was sent today
+        const msgDateStr = new Date(msg.date * 1000).toISOString().split("T")[0];
+        if (msgDateStr !== todayStr) return;
+
+        // Match student names against your STUDENTS database list
+        const textLower = msg.text.toLowerCase();
+        STUDENTS.forEach((student) => {
+          const studentNameLower = student.name.trim().toLowerCase();
+          if (textLower.includes(studentNameLower)) {
+            submittedNames.add(studentNameLower);
+          }
+        });
+      });
+    }
+  } catch (err) {
+    console.error("Failed to read updates from Telegram:", err.message);
+  }
+
+  return submittedNames;
+}
+
 export default async function handler(req, res) {
+  // 1. Authorization & Testing Flag Check
   const isTest = req.query.test === "true";
   const authHeader = req.headers.authorization;
   const isVercelCron =
@@ -23,16 +69,17 @@ export default async function handler(req, res) {
       });
     }
 
-    // Pass submitted names as a comma-separated list during manual web testing:
-    // e.g., ?test=true&submitted=Abebe Bikila,Kebede Tassew
-    let submittedNames = new Set();
+    // 2. Read registered student names directly from Telegram
+    let submittedNames = await getSubmittedNamesFromTelegram(BOT_TOKEN, CHAT_ID);
+
+    // Allow manual URL overrides for quick testing via ?submitted=Name1,Name2
     if (req.query.submitted) {
       req.query.submitted.split(",").forEach((name) => {
         submittedNames.add(name.trim().toLowerCase());
       });
     }
 
-    // 1. Filter students who HAVE NOT submitted
+    // 3. Filter absent students
     const absentStudents = STUDENTS.filter(
       (s) => !submittedNames.has(s.name.trim().toLowerCase())
     );
@@ -40,11 +87,11 @@ export default async function handler(req, res) {
     if (absentStudents.length === 0) {
       return res.status(200).json({
         success: true,
-        message: "ሁሉም ተማሪዎች ተመዝግበዋል። የቀረ የለም! (All students present today)",
+        message: "ሁሉም ተማሪዎች ተመዝግበዋል። የቀረ የለም! (All students accounted for today)",
       });
     }
 
-    // 2. Group absent students
+    // 4. Group remaining absent students by group name
     const groupedAbsents = absentStudents.reduce((acc, student) => {
       const grp = student.group || "ያልተመደበ";
       if (!acc[grp]) acc[grp] = [];
@@ -52,7 +99,7 @@ export default async function handler(req, res) {
       return acc;
     }, {});
 
-    // 3. Build Markdown Message
+    // 5. Build Markdown Summary Message
     let message = `⚠️ *የዛሬ የቀሩ ተማሪዎች መዝገብ (Absent List)*\n\n`;
     message += `❌ *ጠቅላላ የቀሩ ተማሪዎች:* ${absentStudents.length}\n`;
     message += `──────────────────────\n\n`;
@@ -78,7 +125,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 4. Send report to Telegram
+    // 6. Post absent report to Telegram
     const telegramRes = await axios.post(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
       payload
@@ -92,7 +139,7 @@ export default async function handler(req, res) {
         submittedCount: submittedNames.size,
         totalAbsents: absentStudents.length,
       },
-      excludedSubmittedNames: Array.from(submittedNames),
+      detectedSubmittedNames: Array.from(submittedNames),
       groupedAbsents,
       telegramStatus: {
         ok: telegramRes.data.ok,
@@ -100,7 +147,7 @@ export default async function handler(req, res) {
       },
     });
   } catch (error) {
-    console.error("Cron Error:", error.response?.data || error.message);
+    console.error("Cron Execution Error:", error.response?.data || error.message);
     return res.status(500).json({
       success: false,
       error: error.response?.data || error.message,
