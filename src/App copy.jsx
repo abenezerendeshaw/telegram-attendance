@@ -12,9 +12,34 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
 
+  // 24-hour Lock State
+  const [isLocked, setIsLocked] = useState(false);
+  const [hoursLeft, setHoursLeft] = useState(0);
+
   const dropdownRef = useRef(null);
 
   useEffect(() => {
+    // Check local storage for existing submission within the last 24 hours
+    const checkLockStatus = () => {
+      const lastSubmission = localStorage.getItem("last_attendance_timestamp");
+      if (lastSubmission) {
+        const now = Date.now();
+        const timePassed = now - parseInt(lastSubmission, 10);
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+
+        if (timePassed < twentyFourHours) {
+          const remainingMs = twentyFourHours - timePassed;
+          const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+          setIsLocked(true);
+          setHoursLeft(remainingHours);
+        } else {
+          setIsLocked(false);
+        }
+      }
+    };
+
+    checkLockStatus();
+
     // Close the autocomplete dropdown when clicking outside
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -44,6 +69,14 @@ export default function App() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (isLocked) {
+      setStatus({
+        type: "error",
+        message: `ከዚህ ቀደም ተመዝግበዋል። እባክዎ ከ ${hoursLeft} ሰዓታት በኋላ ድጋሚ ይሞክሩ።`,
+      });
+      return;
+    }
 
     if (!selectedStudent) {
       setStatus({
@@ -108,6 +141,12 @@ export default function App() {
         ...coords,
       });
 
+      // Record timestamp to enforce 24-hour check
+      const nowTimestamp = Date.now();
+      localStorage.setItem("last_attendance_timestamp", nowTimestamp.toString());
+      setIsLocked(true);
+      setHoursLeft(24);
+
       setStatus({ type: "success", message: "✅ መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
 
       // Close Telegram WebApp window automatically if embedded
@@ -121,9 +160,7 @@ export default function App() {
       setStatus({
         type: "error",
         message:
-          err.response?.data?.error ||
-          err.response?.data?.message ||
-          "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
+          err.response?.data?.message || "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
       });
     } finally {
       setLoading(false);
@@ -141,6 +178,7 @@ export default function App() {
             ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።
           </p>
 
+          {/* Interface stays completely intact and interactive */}
           <form onSubmit={handleSubmit} style={styles.form}>
             {/* Bilingual Search Container */}
             <div style={styles.inputGroup} ref={dropdownRef}>
@@ -345,7 +383,6 @@ const styles = {
     fontSize: "14px",
     color: "#ffffff",
     display: "flex",
-    justifyInBetween: "space-between",
     justifyContent: "space-between",
     alignItems: "center",
   },

@@ -1,78 +1,67 @@
 // api/submit.js
 import axios from "axios";
+import { attendanceStore } from "../../lib/store.js";
 
-/**
- * Converts Gregorian Date to authentic Ethiopian Calendar Date (ዓ.ም.)
- */
-function toEthiopianDate(date) {
-  const ethMonths = [
+function getEthiopianDate(date = new Date()) {
+  const ETHIOPIAN_MONTHS = [
     "መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት",
     "መጋቢት", "ሚያዝያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"
   ];
+  const ETHIOPIAN_DAYS = [
+    "እሑድ", "ሰኞ", "ማክሰኞ", "ረቡዕ", "ሐሙስ", "ዓርብ", "ቅዳሜ"
+  ];
 
-  // Convert to East Africa Time (UTC+3)
-  const eatTime = new Date(date.getTime() + 3 * 3600 * 1000);
-  let year = eatTime.getUTCFullYear();
-  let month = eatTime.getUTCMonth() + 1;
-  let day = eatTime.getUTCDate();
-
-  // Ethiopian new year starting day (Sept 11 or Sept 12 in leap years)
-  const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
-  const newYearDay = isLeap ? 12 : 11;
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
 
   let ethYear = year - 8;
-  let ethMonth, ethDay;
-
-  const newYearDate = new Date(Date.UTC(year, 8, newYearDay));
-
-  if (eatTime < newYearDate) {
-    ethYear = year - 8;
-    const prevNewYearDay = ((year - 1) % 4 === 0) ? 12 : 11;
-    const prevNewYear = new Date(Date.UTC(year - 1, 8, prevNewYearDay));
-    const diffDays = Math.floor((eatTime - prevNewYear) / (1000 * 60 * 60 * 24));
-    ethMonth = Math.floor(diffDays / 30) + 1;
-    ethDay = (diffDays % 30) + 1;
-  } else {
-    ethYear = year - 7;
-    const diffDays = Math.floor((eatTime - newYearDate) / (1000 * 60 * 60 * 24));
-    ethMonth = Math.floor(diffDays / 30) + 1;
-    ethDay = (diffDays % 30) + 1;
+  if (month < 9 || (month === 9 && day < 11)) {
+    ethYear -= 1;
   }
 
-  const monthName = ethMonths[ethMonth - 1] || "ነሐሴ";
-  return `${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም.`;
+  const gregorianMonths = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) {
+    gregorianMonths[2] = 29;
+  }
+
+  let dayOfYear = day;
+  for (let m = 1; m < month; m++) {
+    dayOfYear += gregorianMonths[m];
+  }
+
+  const sep11 = ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) ? 255 : 254;
+
+  let ethMonth, ethDay;
+  if (dayOfYear >= sep11) {
+    const diff = dayOfYear - sep11;
+    ethMonth = Math.floor(diff / 30) + 1;
+    ethDay = (diff % 30) + 1;
+  } else {
+    const prevYearDays = ((year - 1) % 4 === 0 && (year - 1) % 100 !== 0) || ((year - 1) % 400 === 0) ? 366 : 365;
+    const diff = (dayOfYear + prevYearDays) - sep11;
+    ethMonth = Math.floor(diff / 30) + 1;
+    ethDay = (diff % 30) + 1;
+  }
+
+  const dayOfWeek = ETHIOPIAN_DAYS[date.getDay()];
+  const monthName = ETHIOPIAN_MONTHS[Math.min(ethMonth - 1, 12)] || "መስከረም";
+
+  return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
 
-/**
- * Checks Telegram history to see if the student already submitted today.
- */
-
-
-
-async function checkAlreadySubmitted(botToken, chatId, studentName) {
-  try {
-    const response = await axios.get(
-      `https://api.telegram.org/bot${botToken}/getUpdates`,
-      { params: { limit: 100 } }
-    );
-
-    if (response.data?.ok && Array.isArray(response.data.result)) {
-      const todayStr = new Date().toISOString().split("T")[0];
-      const targetNameLower = studentName.trim().toLowerCase();
-
-      return response.data.result.some((update) => {
-        const msg = update.message || update.channel_post;
-        if (!msg || !msg.text) return false;
-        if (String(msg.chat.id) !== String(chatId)) return false;
-
-        const msgDateStr = new Date(msg.date * 1000).toISOString().split("T")[0];
-        return msgDateStr === todayStr && msg.text.toLowerCase().includes(targetNameLower);
-      });
-    }
-  } catch (err) {
-    console.error("Duplicate check error:", err.message);
-  }
-  return false;
+function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 export default async function handler(req, res) {
@@ -80,114 +69,109 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
 
+  const now = new Date();
+  const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000); // UTC+3
+  const dayOfWeek = eatDate.getUTCDay(); // 1 = Mon, 3 = Wed, 5 = Fri
+  const totalMinutes = eatDate.getUTCHours() * 60 + eatDate.getUTCMinutes();
+
+  const isClassDay = [1, 3, 5].includes(dayOfWeek);
+  
+  // Extended Window: 5:30 PM (1050 min) to 12:00 AM Midnight (1440 min) EAT
+  const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1440;
+
+  if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true" && (!isClassDay || !isWithinWindow)) {
+    return res.status(400).json({
+      message: "የአቴንዳንስ መመዝገቢያ ክፍት የሚሆነው ሰኞ፣ ረቡዕ እና ዓርብ ከማታ 11:30 እስከ 2:30 ብቻ ነው።",
+    });
+  }
+
   try {
-    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-    const TOPIC_PRESENT = process.env.TELEGRAM_TOPIC_PRESENT;
-    const TOPIC_PERMISSION = process.env.TELEGRAM_TOPIC_PERMISSION;
+    const { fullName, group, status, reason, latitude, longitude } = req.body;
 
-    // Toggle: Set ALLOW_MULTIPLE_SUBMISSIONS="false" in Vercel to reject 2nd attempt
-    const allowMultiple = process.env.ALLOW_MULTIPLE_SUBMISSIONS;
-
-    if (!BOT_TOKEN || !CHAT_ID) {
-      return res.status(500).json({
-        success: false,
-        error: "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID on environment variables.",
-      });
+    if (!fullName || !fullName.trim()) {
+      return res.status(400).json({ message: "ሙሉ ስም ማስገባት አስፈላጊ ነው።" });
     }
 
-    const studentName =
-      req.body.fullName ||
-      req.body.selectedStudent?.name ||
-      req.body.studentName ||
-      req.body.name ||
-      (typeof req.body.selectedStudent === "string" ? req.body.selectedStudent : null);
-
-    const groupName =
-      req.body.group ||
-      req.body.selectedStudent?.group ||
-      "ያልተመደበ";
-
-    const { status, reason } = req.body;
-
-    if (!studentName || typeof studentName !== "string" || !studentName.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: "Student name is required.",
-      });
+    if (status === "permission" && (!reason || !reason.trim())) {
+      return res.status(400).json({ message: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።" });
     }
 
-    // Single Submission Guard
-    if (!allowMultiple) {
-      const alreadySubmitted = await checkAlreadySubmitted(BOT_TOKEN, CHAT_ID, studentName);
-      if (alreadySubmitted) {
+    if (status === "present" && process.env.DISABLE_GPS_CHECK !== "true") {
+      if (!latitude || !longitude) {
         return res.status(400).json({
-          success: false,
-          error: "ለዛሬ ተመዝግበዋል! በድጋሚ መመዝገብ አይቻልም። (You have already submitted today!)",
+          message: "ቦታዎን ማረጋገጥ አልተቻለም። እባክዎ የስልክዎን ቦታ (Location / GPS) ያብሩ።",
+        });
+      }
+
+      const CLASS_LAT = parseFloat(process.env.CLASS_LAT || "9.010211");
+      const CLASS_LNG = parseFloat(process.env.CLASS_LNG || "38.761234");
+      const MAX_DISTANCE = parseFloat(process.env.MAX_DISTANCE_METERS || "100");
+
+      const distance = getDistanceInMeters(CLASS_LAT, CLASS_LNG, parseFloat(latitude), parseFloat(longitude));
+
+      if (distance > MAX_DISTANCE) {
+        return res.status(400).json({
+          message: `ከትምህርት ቦታ ውጪ መመዝገብ አይቻልም። አሁን ከትምህርት ቦታ ${Math.round(distance)} ሜትር ርቀው ይገኛሉ።`,
         });
       }
     }
 
-    // Format Date & Time strictly in Ethiopian Local Format
-    const now = new Date();
-    const ethiopianDateStr = toEthiopianDate(now);
+    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+    const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-    // Format Local Time (EAT Timezone)
-    const ethiopianTimeStr = new Intl.DateTimeFormat("am-ET", {
-      timeZone: "Africa/Addis_Ababa",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(now);
-
-    const isPermission = status === "permission";
-    const statusEmoji = isPermission ? "🟡" : "🟢";
-    const statusText = isPermission ? "ፈቃድ (Permission)" : "ተገኝቷል (Present)";
-
-    let message = `${statusEmoji} *የተማሪ አቴንዳንስ (Attendance Record)*\n\n`;
-    message += `👤 *ስም:* ${studentName.trim()}\n`;
-    message += `📍 *ክፍል/ቡድን:* ${groupName}\n`;
-    message += `📊 *ሁኔታ:* ${statusText}\n`;
-    message += `📅 *ቀን:* ${ethiopianDateStr}\n`;
-    message += `⏰ *ሰዓት:* ${ethiopianTimeStr}\n`;
-
-    if (reason && reason.trim()) {
-      message += `📝 *ምክንያት:* ${reason.trim()}\n`;
+    if (!BOT_TOKEN || !CHAT_ID) {
+      return res.status(500).json({ message: "የሰርቨር ውቅር ስህተት አጋጥሟል።" });
     }
+
+    const ethioFormattedDate = getEthiopianDate(now);
+    const formattedTime = now.toLocaleTimeString("am-ET", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const isPresent = status === "present";
+    const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
+    const groupText = group && group.trim() ? group.trim() : "ያልተጠቀሰ";
+
+    let attendanceMessage = 
+      `🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*\n\n` +
+      `👤 *ሙሉ ስም:*\u2001\u2001${fullName.trim()}\n` +
+      `📍 *ቡድን:*\u2001\u2001\u2001${groupText}\n` +
+      `📊 *ሁኔታ:*\u2001\u2001\u2001${statusText}\n` +
+      `📅 *ቀን:*\u2001\u2001\u2001\u2001${ethioFormattedDate}\n` +
+      `⏰ *ሰዓት:*\u2001\u2001\u2001${formattedTime}`;
+
+    if (!isPresent && reason && reason.trim()) {
+      attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${reason.trim()}`;
+    }
+
+    const rawTopicId = isPresent
+      ? process.env.TELEGRAM_TOPIC_PRESENT
+      : process.env.TELEGRAM_TOPIC_PERMISSION;
 
     const payload = {
       chat_id: CHAT_ID,
-      text: message,
+      text: attendanceMessage,
       parse_mode: "Markdown",
     };
 
-    const targetTopicEnv = isPermission ? TOPIC_PERMISSION : TOPIC_PRESENT;
-    if (targetTopicEnv) {
-      const topicId = parseInt(targetTopicEnv, 10);
+    if (rawTopicId) {
+      const topicId = parseInt(rawTopicId, 10);
       if (!isNaN(topicId) && topicId > 0) {
         payload.message_thread_id = topicId;
       }
     }
 
-    const telegramRes = await axios.post(
-      `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-      payload
-    );
+    attendanceStore.addStudent(fullName);
+    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
 
-    return res.status(200).json({
-      success: true,
-      message: "Attendance recorded successfully!",
-      telegramMessageId: telegramRes.data.result?.message_id,
-    });
+    return res.status(200).json({ success: true, message: "መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
   } catch (error) {
-    console.error("Submit API Error:", error.response?.data || error.message);
-
+    const errorDetails = error.response?.data || error.message;
+    console.error("Telegram API Error:", errorDetails);
     return res.status(500).json({
-      success: false,
-      error:
-        error.response?.data?.description ||
-        error.message ||
-        "Internal Server Error",
+      message: "መዝገቡን ማስገባት አልተቻለም።",
+      error: typeof errorDetails === "object" ? JSON.stringify(errorDetails) : errorDetails,
     });
   }
 }
