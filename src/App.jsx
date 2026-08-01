@@ -1,3 +1,4 @@
+// src/App.jsx
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { STUDENTS } from "./students";
@@ -11,9 +12,34 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
 
+  // 24-hour Lock State
+  const [isLocked, setIsLocked] = useState(false);
+  const [hoursLeft, setHoursLeft] = useState(0);
+
   const dropdownRef = useRef(null);
 
   useEffect(() => {
+    // Check local storage for existing submission within the last 24 hours
+    const checkLockStatus = () => {
+      const lastSubmission = localStorage.getItem("last_attendance_timestamp");
+      if (lastSubmission) {
+        const now = Date.now();
+        const timePassed = now - parseInt(lastSubmission, 10);
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+
+        if (timePassed < twentyFourHours) {
+          const remainingMs = twentyFourHours - timePassed;
+          const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+          setIsLocked(true);
+          setHoursLeft(remainingHours);
+        } else {
+          setIsLocked(false);
+        }
+      }
+    };
+
+    checkLockStatus();
+
     // Close the autocomplete dropdown when clicking outside
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -21,7 +47,6 @@ export default function App() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("touchstart", handleClickOutside);
 
     // Initialize Telegram WebApp viewport if running inside Telegram
     if (window.Telegram?.WebApp) {
@@ -30,10 +55,7 @@ export default function App() {
       tg.expand();
     }
 
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("touchstart", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   // Filter students by matching input against Amharic name OR English phonetic string
@@ -45,8 +67,16 @@ export default function App() {
     return matchesAmharic || matchesEnglish;
   });
 
-const handleSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (isLocked) {
+      setStatus({
+        type: "error",
+        message: `ከዚህ ቀደም ተመዝግበዋል። እባክዎ ከ ${hoursLeft} ሰዓታት በኋላ ድጋሚ ይሞክሩ።`,
+      });
+      return;
+    }
 
     if (!selectedStudent) {
       setStatus({
@@ -83,7 +113,7 @@ const handleSubmit = async (e) => {
         const position = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
             enableHighAccuracy: true,
-            timeout: 12000,
+            timeout: 10000,
             maximumAge: 0,
           });
         });
@@ -111,33 +141,32 @@ const handleSubmit = async (e) => {
         ...coords,
       });
 
-      // Show success message
+      // Record timestamp to enforce 24-hour check
+      const nowTimestamp = Date.now();
+      localStorage.setItem("last_attendance_timestamp", nowTimestamp.toString());
+      setIsLocked(true);
+      setHoursLeft(24);
+
       setStatus({ type: "success", message: "✅ መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
 
-      // Reset form fields so the user can submit again if needed
-      setSelectedStudent(null);
-      setSearchTerm("");
-      setReason("");
-      setAttendanceStatus("present");
-
-      // Optional: Auto-clear success message after 5 seconds
-      setTimeout(() => {
-        setStatus({ type: "", message: "" });
-      }, 5000);
-
+      // Close Telegram WebApp window automatically if embedded
+      if (window.Telegram?.WebApp) {
+        setTimeout(() => {
+          window.Telegram.WebApp.close();
+        }, 2000);
+      }
     } catch (err) {
       console.error(err);
       setStatus({
         type: "error",
         message:
-          err.response?.data?.error ||
-          err.response?.data?.message ||
-          "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
+          err.response?.data?.message || "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
       });
     } finally {
       setLoading(false);
     }
   };
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
@@ -149,6 +178,7 @@ const handleSubmit = async (e) => {
             ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።
           </p>
 
+          {/* Interface stays completely intact and interactive */}
           <form onSubmit={handleSubmit} style={styles.form}>
             {/* Bilingual Search Container */}
             <div style={styles.inputGroup} ref={dropdownRef}>
