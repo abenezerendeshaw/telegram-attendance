@@ -45,7 +45,7 @@ export default function App() {
     return matchesAmharic || matchesEnglish;
   });
 
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!selectedStudent) {
@@ -111,14 +111,20 @@ export default function App() {
         ...coords,
       });
 
+      // Show success message
       setStatus({ type: "success", message: "✅ መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
 
-      // Close Telegram WebApp window automatically if embedded
-      if (window.Telegram?.WebApp) {
-        setTimeout(() => {
-          window.Telegram.WebApp.close();
-        }, 2000);
-      }
+      // Reset form fields so the user can submit again if needed
+      setSelectedStudent(null);
+      setSearchTerm("");
+      setReason("");
+      setAttendanceStatus("present");
+
+      // Optional: Auto-clear success message after 5 seconds
+      setTimeout(() => {
+        setStatus({ type: "", message: "" });
+      }, 5000);
+
     } catch (err) {
       console.error(err);
       setStatus({
@@ -132,7 +138,6 @@ export default function App() {
       setLoading(false);
     }
   };
-
   return (
     <div style={styles.container}>
       <div style={styles.card}>
