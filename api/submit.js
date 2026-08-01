@@ -47,7 +47,7 @@ function toEthiopianDate(date) {
  * Checks Telegram history to see if the student already submitted today.
  */
 
-localStorage.clear();
+
 
 async function checkAlreadySubmitted(botToken, chatId, studentName) {
   try {

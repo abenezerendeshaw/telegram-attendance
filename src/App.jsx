@@ -16,6 +16,7 @@ export default function App() {
 
   useEffect(() => {
     // Close the autocomplete dropdown when clicking outside
+    localStorage.clear();
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setIsOpen(false);
