@@ -149,18 +149,28 @@ export default function App() {
 
       setStatus({ type: "success", message: "✅ መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
 
-      // Close Telegram WebApp window automatically if embedded
-      if (window.Telegram?.WebApp) {
-        setTimeout(() => {
-          window.Telegram.WebApp.close();
-        }, 2000);
-      }
+      // Reset Form State
+      setSelectedStudent(null);
+      setSearchTerm("");
+      setReason("");
+      setAttendanceStatus("present");
+
     } catch (err) {
-      console.error(err);
+      console.error("Detailed Submission Error:", err);
+
+      let errorMessage = "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።";
+      if (err.response) {
+        errorMessage =
+          err.response.data?.error ||
+          err.response.data?.message ||
+          `የሰርቨር ስህተት (${err.response.status})።`;
+      } else if (err.request) {
+        errorMessage = "የኢንተርኔት ወይም የሰርቨር ግንኙነት ችግር አለ።";
+      }
+
       setStatus({
         type: "error",
-        message:
-          err.response?.data?.message || "ስህተት አጋጥሟል። እባክዎ ድጋሚ ይሞክሩ።",
+        message: errorMessage,
       });
     } finally {
       setLoading(false);
@@ -178,7 +188,6 @@ export default function App() {
             ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።
           </p>
 
-          {/* Interface stays completely intact and interactive */}
           <form onSubmit={handleSubmit} style={styles.form}>
             {/* Bilingual Search Container */}
             <div style={styles.inputGroup} ref={dropdownRef}>
