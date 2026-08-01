@@ -1,10 +1,8 @@
+// api/submit.js
 import axios from "axios";
 import { attendanceStore } from "../../lib/store.js";
-
-// Helper to safely escape Markdown characters for Telegram API
-function escapeMarkdown(text = "") {
-  return text.replace(/[*_`[\]]/g, "\\$&");
-}
+// In-memory record tracking
+const dailySubmissions = new Map();
 
 function getEthiopianDate(date = new Date()) {
   const ETHIOPIAN_MONTHS = [
@@ -49,8 +47,7 @@ function getEthiopianDate(date = new Date()) {
   }
 
   const dayOfWeek = ETHIOPIAN_DAYS[date.getDay()];
-  const monthIndex = Math.min(Math.max(ethMonth - 1, 0), 12);
-  const monthName = ETHIOPIAN_MONTHS[monthIndex] || "መስከረም";
+  const monthName = ETHIOPIAN_MONTHS[Math.min(ethMonth - 1, 12)] || "መስከረም";
 
   return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
@@ -71,64 +68,51 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method Not Allowed", message: "Method Not Allowed" });
+    return res.status(405).json({ message: "Method Not Allowed" });
   }
 
-  const now = new Date();
-
-  // Robust parsing of East Africa Time (UTC+3)
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Africa/Addis_Ababa",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
-    hour12: false,
-    weekday: "short"
-  });
-
-  const parts = formatter.formatToParts(now).reduce((acc, part) => {
-    acc[part.type] = part.value;
-    return acc;
-  }, {});
-
-  const hours = parseInt(parts.hour === "24" ? "0" : parts.hour, 10);
-  const minutes = parseInt(parts.minute, 10);
-  const totalMinutes = hours * 60 + minutes;
-
-  // Day mapping: 1 = Mon, 3 = Wed, 5 = Fri
-  const dayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
-  const dayOfWeek = dayMap[parts.weekday] ?? now.getDay();
+const now = new Date();
+  const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000); // UTC+3
+  const dayOfWeek = eatDate.getUTCDay(); // 1 = Mon, 3 = Wed, 5 = Fri
+  const totalMinutes = eatDate.getUTCHours() * 60 + eatDate.getUTCMinutes();
 
   const isClassDay = [1, 3, 5].includes(dayOfWeek);
   
-  // Window: 5:30 PM (1050 min) to 12:00 AM Midnight EAT
-  const isWithinWindow = totalMinutes >= 1050 || totalMinutes === 0;
+  // Extended Window: 5:30 PM (1050 min) to 12:00 AM Midnight (1440 min) EAT
+  const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1440;
 
   if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true" && (!isClassDay || !isWithinWindow)) {
-    const errMsg = "የአቴንዳንስ መመዝገቢያ ክፍት የሚሆነው ሰኞ፣ ረቡዕ እና ዓርብ ከማታ 11:30 እስከ 2:30 ብቻ ነው።";
-    return res.status(400).json({ error: errMsg, message: errMsg });
+    return res.status(400).json({
+      message: "የአቴንዳንስ መመዝገቢያ ክፍት የሚሆነው ሰኞ፣ ረቡዕ እና ዓርብ ከማታ 11:30 እስከ 2:30 ብቻ ነው።",
+    });
   }
 
   try {
     const { fullName, group, status, reason, latitude, longitude } = req.body;
 
     if (!fullName || !fullName.trim()) {
-      const errMsg = "ሙሉ ስም ማስገባት አስፈላጊ ነው።";
-      return res.status(400).json({ error: errMsg, message: errMsg });
+      return res.status(400).json({ message: "ሙሉ ስም ማስገባት አስፈላጊ ነው።" });
+    }
+
+    const normalizedName = fullName.trim().toLowerCase();
+    const todayKey = now.toISOString().split("T")[0];
+    const userKey = `${todayKey}_${normalizedName}`;
+
+    if (process.env.DISABLE_SINGLE_SUBMISSION_CHECK !== "true" && dailySubmissions.has(userKey)) {
+      return res.status(400).json({
+        message: "ለዛሬ መዝግበዋል። በአንድ ቀን ከአንድ ጊዜ በላይ መመዝገብ አይቻልም።",
+      });
     }
 
     if (status === "permission" && (!reason || !reason.trim())) {
-      const errMsg = "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።";
-      return res.status(400).json({ error: errMsg, message: errMsg });
+      return res.status(400).json({ message: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።" });
     }
 
     if (status === "present" && process.env.DISABLE_GPS_CHECK !== "true") {
       if (!latitude || !longitude) {
-        const errMsg = "ቦታዎን ማረጋገጥ አልተቻለም። እባክዎ የስልክዎን ቦታ (Location / GPS) ያብሩ።";
-        return res.status(400).json({ error: errMsg, message: errMsg });
+        return res.status(400).json({
+          message: "ቦታዎን ማረጋገጥ አልተቻለም። እባክዎ የስልክዎን ቦታ (Location / GPS) ያብሩ።",
+        });
       }
 
       const CLASS_LAT = parseFloat(process.env.CLASS_LAT || "9.010211");
@@ -138,8 +122,9 @@ export default async function handler(req, res) {
       const distance = getDistanceInMeters(CLASS_LAT, CLASS_LNG, parseFloat(latitude), parseFloat(longitude));
 
       if (distance > MAX_DISTANCE) {
-        const errMsg = `ከትምህርት ቦታ ውጪ መመዝገብ አይቻልም። አሁን ከትምህርት ቦታ ${Math.round(distance)} ሜትር ርቀው ይገኛሉ።`;
-        return res.status(400).json({ error: errMsg, message: errMsg });
+        return res.status(400).json({
+          message: `ከትምህርት ቦታ ውጪ መመዝገብ አይቻልም። አሁን ከትምህርት ቦታ ${Math.round(distance)} ሜትር ርቀው ይገኛሉ።`,
+        });
       }
     }
 
@@ -147,32 +132,29 @@ export default async function handler(req, res) {
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
     if (!BOT_TOKEN || !CHAT_ID) {
-      const errMsg = "የሰርቨር ውቅር ስህተት አጋጥሟል።";
-      return res.status(500).json({ error: errMsg, message: errMsg });
+      return res.status(500).json({ message: "የሰርቨር ውቅር ስህተት አጋጥሟል።" });
     }
 
     const ethioFormattedDate = getEthiopianDate(now);
     const formattedTime = now.toLocaleTimeString("am-ET", {
-      timeZone: "Africa/Addis_Ababa",
       hour: "2-digit",
-      minute: "2-digit"
+      minute: "2-digit",
     });
 
     const isPresent = status === "present";
     const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
-    const groupText = group && group.trim() ? escapeMarkdown(group.trim()) : "ያልተጠቀሰ";
-    const cleanFullName = escapeMarkdown(fullName.trim());
+    const groupText = group && group.trim() ? group.trim() : "ያልተጠቀሰ";
 
     let attendanceMessage = 
       `🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*\n\n` +
-      `👤 *ሙሉ ስም:*\u2001\u2001${cleanFullName}\n` +
+      `👤 *ሙሉ ስም:*\u2001\u2001${fullName.trim()}\n` +
       `📍 *ቡድን:*\u2001\u2001\u2001${groupText}\n` +
       `📊 *ሁኔታ:*\u2001\u2001\u2001${statusText}\n` +
       `📅 *ቀን:*\u2001\u2001\u2001\u2001${ethioFormattedDate}\n` +
       `⏰ *ሰዓት:*\u2001\u2001\u2001${formattedTime}`;
 
     if (!isPresent && reason && reason.trim()) {
-      attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${escapeMarkdown(reason.trim())}`;
+      attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${reason.trim()}`;
     }
 
     const rawTopicId = isPresent
@@ -187,16 +169,15 @@ export default async function handler(req, res) {
 
     if (rawTopicId) {
       const topicId = parseInt(rawTopicId, 10);
-      if (!isNaN(topicId)) {
+      if (!isNaN(topicId) && topicId > 0) {
         payload.message_thread_id = topicId;
       }
     }
 
-    if (attendanceStore && typeof attendanceStore.addStudent === "function") {
-      attendanceStore.addStudent(fullName);
-    }
-
+    attendanceStore.addStudent(fullName);
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
+
+    dailySubmissions.set(userKey, true);
 
     return res.status(200).json({ success: true, message: "መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
   } catch (error) {
