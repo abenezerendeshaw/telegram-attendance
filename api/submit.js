@@ -19,7 +19,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. Extract fullName, group, status, reason, and coordinates from req.body
+    // 2. Extract student info
     const studentName =
       req.body.fullName ||
       req.body.selectedStudent?.name ||
@@ -32,11 +32,7 @@ export default async function handler(req, res) {
       req.body.selectedStudent?.group ||
       "ያልተመደበ";
 
-    const { status, reason, latitude, longitude, location } = req.body;
-
-    // Support both direct latitude/longitude and nested location object
-    const lat = latitude || location?.latitude;
-    const lng = longitude || location?.longitude;
+    const { status, reason } = req.body;
 
     // 3. Validate student name
     if (!studentName || typeof studentName !== "string" || !studentName.trim()) {
@@ -46,7 +42,22 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Format Telegram Message
+    // 4. Format Date & Time in Ethiopian / Addis Ababa Timezone
+    const now = new Date();
+    
+    // Ethiopian/Amharic formatted Date (e.g., ነሐሴ 1, 2018)
+    const ethiopianDateStr = new Intl.DateTimeFormat("am-ET", {
+      timeZone: "Africa/Addis_Ababa",
+      dateStyle: "full",
+    }).format(now);
+
+    // Ethiopian Time (e.g., 10:15:30 PM EAT)
+    const ethiopianTimeStr = new Intl.DateTimeFormat("am-ET", {
+      timeZone: "Africa/Addis_Ababa",
+      timeStyle: "medium",
+    }).format(now);
+
+    // 5. Format Telegram Message
     const isPermission = status === "permission";
     const statusEmoji = isPermission ? "🟡" : "🟢";
     const statusText = isPermission ? "ፈቃድ (Permission)" : "ተገኝቷል (Present)";
@@ -55,13 +66,11 @@ export default async function handler(req, res) {
     message += `👤 *ስም:* ${studentName.trim()}\n`;
     message += `📍 *ክፍል/ቡድን:* ${groupName}\n`;
     message += `📊 *ሁኔታ:* ${statusText}\n`;
+    message += `📅 *ቀን:* ${ethiopianDateStr}\n`;
+    message += `⏰ *ሰዓት:* ${ethiopianTimeStr}\n`;
 
     if (reason && reason.trim()) {
       message += `📝 *ምክንያት:* ${reason.trim()}\n`;
-    }
-
-    if (lat && lng) {
-      message += `🌐 *Location:* [View Map](https://maps.google.com/?q=${lat},${lng})\n`;
     }
 
     const payload = {
@@ -70,7 +79,7 @@ export default async function handler(req, res) {
       parse_mode: "Markdown",
     };
 
-    // 5. Attach topic thread ID if configured
+    // 6. Attach topic thread ID if configured
     if (TOPIC_PRESENT) {
       const topicId = parseInt(TOPIC_PRESENT, 10);
       if (!isNaN(topicId) && topicId > 0) {
@@ -78,7 +87,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 6. Send payload to Telegram Bot API
+    // 7. Send payload to Telegram Bot API
     const telegramRes = await axios.post(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
       payload
