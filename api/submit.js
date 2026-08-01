@@ -19,19 +19,24 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. Safely extract student details regardless of Frontend payload shape
+    // 2. Extract fullName, group, status, reason, and coordinates from req.body
     const studentName =
+      req.body.fullName ||
       req.body.selectedStudent?.name ||
       req.body.studentName ||
       req.body.name ||
       (typeof req.body.selectedStudent === "string" ? req.body.selectedStudent : null);
 
     const groupName =
-      req.body.selectedStudent?.group ||
       req.body.group ||
+      req.body.selectedStudent?.group ||
       "ያልተመደበ";
 
-    const { status, reason, location } = req.body;
+    const { status, reason, latitude, longitude, location } = req.body;
+
+    // Support both direct latitude/longitude and nested location object
+    const lat = latitude || location?.latitude;
+    const lng = longitude || location?.longitude;
 
     // 3. Validate student name
     if (!studentName || typeof studentName !== "string" || !studentName.trim()) {
@@ -55,8 +60,8 @@ export default async function handler(req, res) {
       message += `📝 *ምክንያት:* ${reason.trim()}\n`;
     }
 
-    if (location && location.latitude && location.longitude) {
-      message += `🌐 *Location:* [View Map](https://maps.google.com/?q=${location.latitude},${location.longitude})\n`;
+    if (lat && lng) {
+      message += `🌐 *Location:* [View Map](https://maps.google.com/?q=${lat},${lng})\n`;
     }
 
     const payload = {
