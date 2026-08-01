@@ -1,4 +1,3 @@
-// api/submit.js
 import axios from "axios";
 import { attendanceStore } from "../../lib/store.js";
 
@@ -50,7 +49,8 @@ function getEthiopianDate(date = new Date()) {
   }
 
   const dayOfWeek = ETHIOPIAN_DAYS[date.getDay()];
-  const monthName = ETHIOPIAN_MONTHS[Math.min(ethMonth - 1, 12)] || "መስከረም";
+  const monthIndex = Math.min(Math.max(ethMonth - 1, 0), 12);
+  const monthName = ETHIOPIAN_MONTHS[monthIndex] || "መስከረም";
 
   return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
@@ -76,17 +76,36 @@ export default async function handler(req, res) {
 
   const now = new Date();
 
-  // Convert to East Africa Time (UTC+3 / Africa/Addis_Ababa) accurately
-  const eatTimeString = now.toLocaleString("en-US", { timeZone: "Africa/Addis_Ababa" });
-  const eatDate = new Date(eatTimeString);
-  
-  const dayOfWeek = eatDate.getDay(); // 1 = Mon, 3 = Wed, 5 = Fri
-  const totalMinutes = eatDate.getHours() * 60 + eatDate.getMinutes();
+  // Robust parsing of East Africa Time (UTC+3)
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Africa/Addis_Ababa",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+    hour12: false,
+    weekday: "short"
+  });
+
+  const parts = formatter.formatToParts(now).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  const hours = parseInt(parts.hour === "24" ? "0" : parts.hour, 10);
+  const minutes = parseInt(parts.minute, 10);
+  const totalMinutes = hours * 60 + minutes;
+
+  // Day mapping: 1 = Mon, 3 = Wed, 5 = Fri
+  const dayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
+  const dayOfWeek = dayMap[parts.weekday] ?? now.getDay();
 
   const isClassDay = [1, 3, 5].includes(dayOfWeek);
   
-  // Window: 5:30 PM (1050 min) to 12:00 AM Midnight (1440 min) EAT
-  const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1440;
+  // Window: 5:30 PM (1050 min) to 12:00 AM Midnight EAT
+  const isWithinWindow = totalMinutes >= 1050 || totalMinutes === 0;
 
   if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true" && (!isClassDay || !isWithinWindow)) {
     const errMsg = "የአቴንዳንስ መመዝገቢያ ክፍት የሚሆነው ሰኞ፣ ረቡዕ እና ዓርብ ከማታ 11:30 እስከ 2:30 ብቻ ነው።";
@@ -133,9 +152,10 @@ export default async function handler(req, res) {
     }
 
     const ethioFormattedDate = getEthiopianDate(now);
-    const formattedTime = eatDate.toLocaleTimeString("am-ET", {
+    const formattedTime = now.toLocaleTimeString("am-ET", {
+      timeZone: "Africa/Addis_Ababa",
       hour: "2-digit",
-      minute: "2-digit",
+      minute: "2-digit"
     });
 
     const isPresent = status === "present";
@@ -167,7 +187,7 @@ export default async function handler(req, res) {
 
     if (rawTopicId) {
       const topicId = parseInt(rawTopicId, 10);
-      if (!isNaN(topicId) && topicId > 0) {
+      if (!isNaN(topicId)) {
         payload.message_thread_id = topicId;
       }
     }

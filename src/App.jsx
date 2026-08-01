@@ -1,4 +1,3 @@
-// src/App.jsx
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { STUDENTS } from "./students";
@@ -22,6 +21,7 @@ export default function App() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
 
     // Initialize Telegram WebApp viewport if running inside Telegram
     if (window.Telegram?.WebApp) {
@@ -30,7 +30,10 @@ export default function App() {
       tg.expand();
     }
 
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, []);
 
   // Filter students by matching input against Amharic name OR English phonetic string
@@ -80,7 +83,7 @@ export default function App() {
         const position = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
             enableHighAccuracy: true,
-            timeout: 10000,
+            timeout: 12000,
             maximumAge: 0,
           });
         });
@@ -345,7 +348,6 @@ const styles = {
     fontSize: "14px",
     color: "#ffffff",
     display: "flex",
-    justifyInBetween: "space-between",
     justifyContent: "space-between",
     alignItems: "center",
   },
