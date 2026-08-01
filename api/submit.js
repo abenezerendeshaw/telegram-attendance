@@ -2,7 +2,7 @@
 import axios from "axios";
 
 export default async function handler(req, res) {
-  // Only allow POST requests
+  // 1. Allow only POST requests
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
@@ -19,27 +19,43 @@ export default async function handler(req, res) {
       });
     }
 
-    const { selectedStudent, status, reason, location } = req.body;
+    // 2. Safely extract student details regardless of Frontend payload shape
+    const studentName =
+      req.body.selectedStudent?.name ||
+      req.body.studentName ||
+      req.body.name ||
+      (typeof req.body.selectedStudent === "string" ? req.body.selectedStudent : null);
 
-    if (!selectedStudent || !selectedStudent.name) {
-      return res.status(400).json({ success: false, error: "Student name is required." });
+    const groupName =
+      req.body.selectedStudent?.group ||
+      req.body.group ||
+      "ያልተመደበ";
+
+    const { status, reason, location } = req.body;
+
+    // 3. Validate student name
+    if (!studentName || typeof studentName !== "string" || !studentName.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Student name is required.",
+      });
     }
 
-    // Prepare Telegram message
+    // 4. Format Telegram Message
     const isPermission = status === "permission";
     const statusEmoji = isPermission ? "🟡" : "🟢";
     const statusText = isPermission ? "ፈቃድ (Permission)" : "ተገኝቷል (Present)";
 
     let message = `${statusEmoji} *የተማሪ አቴንዳንስ (Attendance Record)*\n\n`;
-    message += `👤 *ስም:* ${selectedStudent.name}\n`;
-    message += `📍 *ክፍል/ቡድን:* ${selectedStudent.group || "ያልተመደበ"}\n`;
+    message += `👤 *ስም:* ${studentName.trim()}\n`;
+    message += `📍 *ክፍል/ቡድን:* ${groupName}\n`;
     message += `📊 *ሁኔታ:* ${statusText}\n`;
 
     if (reason && reason.trim()) {
       message += `📝 *ምክንያት:* ${reason.trim()}\n`;
     }
 
-    if (location && location.latitude) {
+    if (location && location.latitude && location.longitude) {
       message += `🌐 *Location:* [View Map](https://maps.google.com/?q=${location.latitude},${location.longitude})\n`;
     }
 
@@ -49,7 +65,7 @@ export default async function handler(req, res) {
       parse_mode: "Markdown",
     };
 
-    // Send to specific topic if TELEGRAM_TOPIC_PRESENT is set
+    // 5. Attach topic thread ID if configured
     if (TOPIC_PRESENT) {
       const topicId = parseInt(TOPIC_PRESENT, 10);
       if (!isNaN(topicId) && topicId > 0) {
@@ -57,7 +73,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // Send submission to Telegram
+    // 6. Send payload to Telegram Bot API
     const telegramRes = await axios.post(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
       payload
@@ -73,7 +89,10 @@ export default async function handler(req, res) {
 
     return res.status(500).json({
       success: false,
-      error: error.response?.data?.description || error.message || "Internal Server Error",
+      error:
+        error.response?.data?.description ||
+        error.message ||
+        "Internal Server Error",
     });
   }
 }
