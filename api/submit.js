@@ -1,8 +1,78 @@
 // api/submit.js
 import axios from "axios";
 
+/**
+ * Converts Gregorian Date to authentic Ethiopian Calendar Date (ዓ.ም.)
+ */
+function toEthiopianDate(date) {
+  const ethMonths = [
+    "መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት",
+    "መጋቢት", "ሚያዝያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"
+  ];
+
+  // Convert to East Africa Time (UTC+3)
+  const eatTime = new Date(date.getTime() + 3 * 3600 * 1000);
+  let year = eatTime.getUTCFullYear();
+  let month = eatTime.getUTCMonth() + 1;
+  let day = eatTime.getUTCDate();
+
+  // Ethiopian new year starting day (Sept 11 or Sept 12 in leap years)
+  const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+  const newYearDay = isLeap ? 12 : 11;
+
+  let ethYear = year - 8;
+  let ethMonth, ethDay;
+
+  const newYearDate = new Date(Date.UTC(year, 8, newYearDay));
+
+  if (eatTime < newYearDate) {
+    ethYear = year - 8;
+    const prevNewYearDay = ((year - 1) % 4 === 0) ? 12 : 11;
+    const prevNewYear = new Date(Date.UTC(year - 1, 8, prevNewYearDay));
+    const diffDays = Math.floor((eatTime - prevNewYear) / (1000 * 60 * 60 * 24));
+    ethMonth = Math.floor(diffDays / 30) + 1;
+    ethDay = (diffDays % 30) + 1;
+  } else {
+    ethYear = year - 7;
+    const diffDays = Math.floor((eatTime - newYearDate) / (1000 * 60 * 60 * 24));
+    ethMonth = Math.floor(diffDays / 30) + 1;
+    ethDay = (diffDays % 30) + 1;
+  }
+
+  const monthName = ethMonths[ethMonth - 1] || "ነሐሴ";
+  return `${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም.`;
+}
+
+/**
+ * Checks Telegram history to see if the student already submitted today.
+ */
+async function checkAlreadySubmitted(botToken, chatId, studentName) {
+  try {
+    const response = await axios.get(
+      `https://api.telegram.org/bot${botToken}/getUpdates`,
+      { params: { limit: 100 } }
+    );
+
+    if (response.data?.ok && Array.isArray(response.data.result)) {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const targetNameLower = studentName.trim().toLowerCase();
+
+      return response.data.result.some((update) => {
+        const msg = update.message || update.channel_post;
+        if (!msg || !msg.text) return false;
+        if (String(msg.chat.id) !== String(chatId)) return false;
+
+        const msgDateStr = new Date(msg.date * 1000).toISOString().split("T")[0];
+        return msgDateStr === todayStr && msg.text.toLowerCase().includes(targetNameLower);
+      });
+    }
+  } catch (err) {
+    console.error("Duplicate check error:", err.message);
+  }
+  return false;
+}
+
 export default async function handler(req, res) {
-  // 1. Allow only POST requests
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
@@ -13,14 +83,16 @@ export default async function handler(req, res) {
     const TOPIC_PRESENT = process.env.TELEGRAM_TOPIC_PRESENT;
     const TOPIC_PERMISSION = process.env.TELEGRAM_TOPIC_PERMISSION;
 
+    // Toggle: Set ALLOW_MULTIPLE_SUBMISSIONS="false" in Vercel to reject 2nd attempt
+    const allowMultiple = process.env.ALLOW_MULTIPLE_SUBMISSIONS !== "false";
+
     if (!BOT_TOKEN || !CHAT_ID) {
       return res.status(500).json({
         success: false,
-        error: "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID on Vercel environment variables.",
+        error: "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID on environment variables.",
       });
     }
 
-    // 2. Extract student info
     const studentName =
       req.body.fullName ||
       req.body.selectedStudent?.name ||
@@ -35,7 +107,6 @@ export default async function handler(req, res) {
 
     const { status, reason } = req.body;
 
-    // 3. Validate student name
     if (!studentName || typeof studentName !== "string" || !studentName.trim()) {
       return res.status(400).json({
         success: false,
@@ -43,22 +114,29 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Format Date & Time in Ethiopian / Addis Ababa Timezone
-    const now = new Date();
-    
-    // Ethiopian/Amharic formatted Date (e.g., ነሐሴ 1, 2018)
-    const ethiopianDateStr = new Intl.DateTimeFormat("am-ET", {
-      timeZone: "Africa/Addis_Ababa",
-      dateStyle: "full",
-    }).format(now);
+    // Single Submission Guard
+    if (!allowMultiple) {
+      const alreadySubmitted = await checkAlreadySubmitted(BOT_TOKEN, CHAT_ID, studentName);
+      if (alreadySubmitted) {
+        return res.status(400).json({
+          success: false,
+          error: "ለዛሬ ተመዝግበዋል! በድጋሚ መመዝገብ አይቻልም። (You have already submitted today!)",
+        });
+      }
+    }
 
-    // Ethiopian Time (e.g., 10:15:30 PM EAT)
+    // Format Date & Time strictly in Ethiopian Local Format
+    const now = new Date();
+    const ethiopianDateStr = toEthiopianDate(now);
+
+    // Format Local Time (EAT Timezone)
     const ethiopianTimeStr = new Intl.DateTimeFormat("am-ET", {
       timeZone: "Africa/Addis_Ababa",
-      timeStyle: "medium",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
     }).format(now);
 
-    // 5. Format Telegram Message
     const isPermission = status === "permission";
     const statusEmoji = isPermission ? "🟡" : "🟢";
     const statusText = isPermission ? "ፈቃድ (Permission)" : "ተገኝቷል (Present)";
@@ -80,9 +158,7 @@ export default async function handler(req, res) {
       parse_mode: "Markdown",
     };
 
-    // 6. Dynamically choose target topic based on attendance status
     const targetTopicEnv = isPermission ? TOPIC_PERMISSION : TOPIC_PRESENT;
-
     if (targetTopicEnv) {
       const topicId = parseInt(targetTopicEnv, 10);
       if (!isNaN(topicId) && topicId > 0) {
@@ -90,7 +166,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 7. Send payload to Telegram Bot API
     const telegramRes = await axios.post(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
       payload
