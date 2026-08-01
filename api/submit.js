@@ -11,6 +11,7 @@ export default async function handler(req, res) {
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
     const TOPIC_PRESENT = process.env.TELEGRAM_TOPIC_PRESENT;
+    const TOPIC_PERMISSION = process.env.TELEGRAM_TOPIC_PERMISSION;
 
     if (!BOT_TOKEN || !CHAT_ID) {
       return res.status(500).json({
@@ -79,9 +80,11 @@ export default async function handler(req, res) {
       parse_mode: "Markdown",
     };
 
-    // 6. Attach topic thread ID if configured
-    if (TOPIC_PRESENT) {
-      const topicId = parseInt(TOPIC_PRESENT, 10);
+    // 6. Dynamically choose target topic based on attendance status
+    const targetTopicEnv = isPermission ? TOPIC_PERMISSION : TOPIC_PRESENT;
+
+    if (targetTopicEnv) {
+      const topicId = parseInt(targetTopicEnv, 10);
       if (!isNaN(topicId) && topicId > 0) {
         payload.message_thread_id = topicId;
       }
