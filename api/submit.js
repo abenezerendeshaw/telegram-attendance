@@ -84,7 +84,7 @@ export default async function handler(req, res) {
     const TOPIC_PERMISSION = process.env.TELEGRAM_TOPIC_PERMISSION;
 
     // Toggle: Set ALLOW_MULTIPLE_SUBMISSIONS="false" in Vercel to reject 2nd attempt
-    const allowMultiple = process.env.ALLOW_MULTIPLE_SUBMISSIONS !== "false";
+    const allowMultiple = process.env.ALLOW_MULTIPLE_SUBMISSIONS;
 
     if (!BOT_TOKEN || !CHAT_ID) {
       return res.status(500).json({
