@@ -1,6 +1,6 @@
 // api/submit.js
 import axios from "axios";
-import { attendanceStore } from "../../lib/store.js";
+import { attendanceStore } from "../lib/store.js";
 // In-memory record tracking
 const dailySubmissions = new Map();
 
@@ -78,8 +78,9 @@ const now = new Date();
 
   const isClassDay = [1, 3, 5].includes(dayOfWeek);
   
-  // Extended Window: 5:30 PM (1050 min) to 12:00 AM Midnight (1440 min) EAT
-  const isWithinWindow = totalMinutes >= 1050 && totalMinutes <= 1440;
+  // Extended Window: 5:30 PM (1050 min) to 12:30 AM (30 min next day) EAT
+  // totalMinutes wraps 0–1439; past midnight is 0–29
+  const isWithinWindow = totalMinutes >= 1050 || totalMinutes <= 30;
 
   if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true" && (!isClassDay || !isWithinWindow)) {
     return res.status(400).json({
