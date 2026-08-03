@@ -182,10 +182,13 @@ const now = new Date();
     }
 
     const ethioFormattedDate = getEthiopianDate(now);
-    const formattedTime = now.toLocaleTimeString("am-ET", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+
+    // Ethiopian time = EAT (UTC+3) minus 6 hours, with 12-hour cycle starting at dawn
+    const eatHour = eatDate.getUTCHours();
+    const eatMinute = eatDate.getUTCMinutes();
+    const ethHour = ((eatHour - 6 + 24) % 12) || 12;
+    const ethPeriod = (eatHour >= 6 && eatHour < 18) ? "ቀን" : "ማታ";
+    const formattedTime = `${ethHour}:${String(eatMinute).padStart(2, "0")} ${ethPeriod}`;
 
     const isPresent = status === "present";
     const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
