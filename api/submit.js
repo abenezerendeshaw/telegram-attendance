@@ -1,5 +1,6 @@
 // api/submit.js
 import axios from "axios";
+import { google } from "googleapis";
 import { attendanceStore } from "../lib/store.js";
 // In-memory record tracking
 const dailySubmissions = new Map();
@@ -64,6 +65,50 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+async function appendToSheet({ fullName, group, status, reason, date, time }) {
+  const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+
+  if (!credentialsJson || !sheetId) {
+    console.warn("[Sheets] Skipping — GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SHEET_ID not set");
+    return;
+  }
+
+  let credentials;
+  try {
+    credentials = JSON.parse(credentialsJson);
+  } catch (e) {
+    console.error("[Sheets] Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:", e.message);
+    return;
+  }
+
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+
+  const sheets = google.sheets({ version: "v4", auth });
+
+  const statusText = status === "present"
+    ? "ተገኝቷል / ተገኝታለች"
+    : "ፈቃድ ጠይቋል / ጠይቃለች";
+
+  try {
+    const result = await sheets.spreadsheets.values.append({
+      spreadsheetId: sheetId,
+      range: "Sheet1!A:F",
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[date, time, fullName, group, statusText, reason || ""]],
+      },
+    });
+    console.log("[Sheets] Row appended successfully:", result.data.updates?.updatedRange);
+  } catch (e) {
+    console.error("[Sheets] Failed to append row:", e.message, e.response?.data || "");
+    // Don't rethrow — sheet failure should not block the main response
+  }
 }
 
 export default async function handler(req, res) {
@@ -177,6 +222,16 @@ const now = new Date();
 
     attendanceStore.addStudent(fullName);
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
+
+    // Append row to Google Sheet
+    await appendToSheet({
+      fullName: fullName.trim(),
+      group: groupText,
+      status,
+      reason: status === "permission" ? reason : "",
+      date: ethioFormattedDate,
+      time: formattedTime,
+    });
 
     dailySubmissions.set(userKey, true);
 
