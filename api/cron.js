@@ -96,7 +96,6 @@ export default async function handler(req, res) {
   // Verify Vercel Cron Signature to secure the endpoint (allow bypass parameter for testing)
   const authHeader = req.headers.authorization;
   const isBypassed = req.query.bypass === "true";
-  /*
   if (
     process.env.NODE_ENV === "production" &&
     !isBypassed &&
@@ -104,7 +103,6 @@ export default async function handler(req, res) {
   ) {
     return res.status(401).json({ success: false, message: "Unauthorized" });
   }
-  */
 
   const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const sheetId = process.env.GOOGLE_SHEET_ID;
