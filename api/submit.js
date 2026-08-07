@@ -232,7 +232,7 @@ const now = new Date();
     }
 
     const rawTopicId = isPresent
-      ? process.env.TELEGRAM_TOPIC_PRESENT
+      ? (process.env.TELEGRAM_TOPIC_PRESENT_TEST || process.env.TELEGRAM_TOPIC_PRESENT)
       : process.env.TELEGRAM_TOPIC_PERMISSION;
 
     const payload = {
