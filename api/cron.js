@@ -178,8 +178,11 @@ export default async function handler(req, res) {
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-    // 1. Send / Update Present List -> Topic 88 (or TELEGRAM_TOPIC_PRESENT_TEST)
-    const presentTopic = parseInt(process.env.TELEGRAM_TOPIC_PRESENT_TEST || "88", 10);
+    // 1. Send / Update Present List (prefers test topic, then old present topic, fallback 23)
+    const presentTopic = parseInt(
+      process.env.TELEGRAM_TOPIC_PRESENT_TEST || process.env.TELEGRAM_TOPIC_PRESENT || "23",
+      10
+    );
     let presentMessage = `📅 *የዛሬ ሙሉ የተገኙ ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
     presentMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     if (presentsList.length === 0) {
@@ -191,8 +194,11 @@ export default async function handler(req, res) {
     }
     await sendLongMessage(BOT_TOKEN, CHAT_ID, presentTopic, presentMessage);
 
-    // 2. Send Permission List -> Topic 94
-    const permissionTopic = parseInt(process.env.TELEGRAM_TOPIC_PERMISSION_SUMMARY || "94", 10);
+    // 2. Send Permission List (prefers summary topic, then old permission topic, fallback 19)
+    const permissionTopic = parseInt(
+      process.env.TELEGRAM_TOPIC_PERMISSION_SUMMARY || process.env.TELEGRAM_TOPIC_PERMISSION || "19",
+      10
+    );
     let permissionMessage = `📅 *የዛሬ ፈቃድ የጠየቁ ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
     permissionMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     if (permissionsList.length === 0) {
