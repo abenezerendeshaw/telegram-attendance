@@ -223,15 +223,12 @@ const now = new Date();
     const groupText = group && group.trim() ? group.trim() : "ያልተጠቀሰ";
 
     let attendanceMessage = 
-      `🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*\n\n` +
-      `👤 *ሙሉ ስም:*\u2001\u2001${fullName.trim()}\n` +
-      `📍 *ቡድን:*\u2001\u2001\u2001${groupText}\n` +
-      `📊 *ሁኔታ:*\u2001\u2001\u2001${statusText}\n` +
-      `📅 *ቀን:*\u2001\u2001\u2001\u2001${ethioFormattedDate}\n` +
-      `⏰ *ሰዓት:*\u2001\u2001\u2001${formattedTime}`;
+      `📅 *${ethioFormattedDate}* | ⏰ *${formattedTime}* | 📍 *ቡድን: ${groupText}*\n` +
+      `──────────────────────────────────────\n` +
+      `👤 *${fullName.trim()}* ━━━━━━━━ 📊 *${statusText}*`;
 
     if (!isPresent && reason && reason.trim()) {
-      attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${reason.trim()}`;
+      attendanceMessage += `\n📝 *ምክንያት:* ${reason.trim()}`;
     }
 
     const rawTopicId = isPresent
