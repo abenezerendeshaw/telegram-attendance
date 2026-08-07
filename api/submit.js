@@ -115,61 +115,13 @@ async function appendToSheet({ fullName, group, status, date, time }) {
       },
     });
     console.log("[Sheets] Row appended successfully:", result.data.updates?.updatedRange);
-
-    // Generate and send/update the consolidated daily list to Topic 88
-    await sendDailyReport(sheets, sheetId, date);
   } catch (e) {
     console.error("[Sheets] Failed to append row:", e.message, e.response?.data || "");
     // Don't rethrow — sheet failure should not block the main response
   }
 }
 
-async function sendDailyReport(sheets, sheetId, date) {
-  try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: "Sheet1!A:E",
-    });
 
-    const rows = response.data.values || [];
-    if (rows.length <= 1) return;
-
-    // Filter rows matching today's Ethiopian date (column index 3)
-    const todayRows = rows.filter((row) => row[3] === date);
-    if (todayRows.length === 0) return;
-
-    let reportMessage = `📅 *የዛሬ መገኘት መዝገብ — ${date}*\n`;
-    reportMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    reportMessage += `👤 *ስም* ━━━━━━━━━━━━━━ 📊 *ሁኔታ (ቡድን)*\n`;
-    reportMessage += `──────────────────────────────────────\n`;
-
-    todayRows.forEach((row, index) => {
-      const name = row[0] || "ያልታወቀ";
-      const groupVal = row[1] || "ያልተጠቀሰ";
-      const statusVal = row[2] || "ያልተጠቀሰ";
-      reportMessage += `${index + 1}. *${name}* ━━━ ${statusVal} (ቡድን: ${groupVal})\n`;
-    });
-
-    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-    const topicId = parseInt(process.env.TELEGRAM_TOPIC_PRESENT_TEST || "88", 10);
-
-    const payload = {
-      chat_id: CHAT_ID,
-      text: reportMessage,
-      parse_mode: "Markdown",
-    };
-
-    if (topicId && topicId > 0) {
-      payload.message_thread_id = topicId;
-    }
-
-    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
-    console.log("[Sheets] Daily summary report sent successfully to Topic 88");
-  } catch (err) {
-    console.error("[Sheets] Failed to send daily summary report:", err.message);
-  }
-}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -291,25 +243,16 @@ const now = new Date();
       attendanceMessage += `\n📝 *ምክንያት:* ${reason.trim()}`;
     }
 
-    // Both Present and Permission individual check-ins go to the same Present topic ID
-    const rawTopicId = process.env.TELEGRAM_TOPIC_PRESENT_TEST || process.env.TELEGRAM_TOPIC_PRESENT || "23";
-
+    // Individual check-ins (present & permission) → General tab (no topic thread)
     const payload = {
       chat_id: CHAT_ID,
       text: attendanceMessage,
       parse_mode: "Markdown",
     };
 
-    if (rawTopicId) {
-      const topicId = parseInt(rawTopicId, 10);
-      if (!isNaN(topicId) && topicId > 0) {
-        payload.message_thread_id = topicId;
-      }
-    }
-
     attendanceStore.addStudent(fullName);
-    
-    // Send individual check-in/permission card to the shared topic
+
+    // Send to General tab
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
 
     // Append row to Google Sheet — columns: ሙሉ ስም | ቡድን | ሁኔታ | ቀን | ሰዓት
