@@ -69,7 +69,8 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-async function appendToSheet({ fullName, group, status, reason, date, time }) {
+// Column order: ሙሉ ስም | ቡድን | ሁኔታ | ቀን | ሰዓት
+async function appendToSheet({ fullName, group, status, date, time }) {
   const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const sheetId = process.env.GOOGLE_SHEET_ID;
 
@@ -106,10 +107,10 @@ async function appendToSheet({ fullName, group, status, reason, date, time }) {
   try {
     const result = await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
-      range: "Sheet1!A:F",
+      range: "Sheet1!A:E", // ሙሉ ስም | ቡድን | ሁኔታ | ቀን | ሰዓት
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [[date, time, fullName, group, statusText, reason || ""]],
+        values: [[fullName, group, statusText, date, time]],
       },
     });
     console.log("[Sheets] Row appended successfully:", result.data.updates?.updatedRange);
@@ -253,12 +254,11 @@ const now = new Date();
     attendanceStore.addStudent(fullName);
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
 
-    // Append row to Google Sheet
+    // Append row to Google Sheet — columns: ሙሉ ስም | ቡድን | ሁኔታ | ቀን | ሰዓት
     await appendToSheet({
       fullName: fullName.trim(),
       group: groupText,
       status,
-      reason: status === "permission" ? reason : "",
       date: ethioFormattedDate,
       time: formattedTime,
     });
