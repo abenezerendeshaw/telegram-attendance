@@ -53,6 +53,45 @@ function getEthiopianDate(date = new Date()) {
   return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
 
+// Helper function to split and send long Telegram messages (under 4096-char limit)
+async function sendLongMessage(botToken, chatId, topicId, text) {
+  const LIMIT = 4000;
+  if (text.length <= LIMIT) {
+    await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      chat_id: chatId,
+      text,
+      parse_mode: "Markdown",
+      message_thread_id: topicId,
+    });
+    return;
+  }
+
+  const lines = text.split("\n");
+  let currentChunk = "";
+
+  for (const line of lines) {
+    if (currentChunk.length + line.length + 1 > LIMIT) {
+      await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        chat_id: chatId,
+        text: currentChunk,
+        parse_mode: "Markdown",
+        message_thread_id: topicId,
+      });
+      currentChunk = "";
+    }
+    currentChunk += line + "\n";
+  }
+
+  if (currentChunk.trim()) {
+    await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      chat_id: chatId,
+      text: currentChunk,
+      parse_mode: "Markdown",
+      message_thread_id: topicId,
+    });
+  }
+}
+
 export default async function handler(req, res) {
   // Verify Vercel Cron Signature to secure the endpoint (allow bypass parameter for testing)
   const authHeader = req.headers.authorization;
@@ -150,12 +189,7 @@ export default async function handler(req, res) {
         presentMessage += `${idx + 1}. *${s.name}* (ቡድን: ${s.group.split(":")[0]})\n`;
       });
     }
-    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text: presentMessage,
-      parse_mode: "Markdown",
-      message_thread_id: presentTopic,
-    });
+    await sendLongMessage(BOT_TOKEN, CHAT_ID, presentTopic, presentMessage);
 
     // 2. Send Permission List -> Topic 94
     const permissionTopic = 94;
@@ -168,12 +202,7 @@ export default async function handler(req, res) {
         permissionMessage += `${idx + 1}. *${s.name}* (ቡድን: ${s.group.split(":")[0]})\n`;
       });
     }
-    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text: permissionMessage,
-      parse_mode: "Markdown",
-      message_thread_id: permissionTopic,
-    });
+    await sendLongMessage(BOT_TOKEN, CHAT_ID, permissionTopic, permissionMessage);
 
     // 3. Send Absent List -> Topic 96
     const absentTopic = 96;
@@ -186,12 +215,7 @@ export default async function handler(req, res) {
         absentMessage += `${idx + 1}. *${s.name}* (ቡድን: ${s.group.split(":")[0]})\n`;
       });
     }
-    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text: absentMessage,
-      parse_mode: "Markdown",
-      message_thread_id: absentTopic,
-    });
+    await sendLongMessage(BOT_TOKEN, CHAT_ID, absentTopic, absentMessage);
 
     return res.status(200).json({
       success: true,
