@@ -79,6 +79,12 @@ async function appendToSheet({ fullName, group, status, reason, date, time }) {
   let credentials;
   try {
     credentials = JSON.parse(credentialsJson);
+    // Normalize escaped newlines in the private key.
+    // When stored as a single-line env var, \n sequences become literal \\n;
+    // the Google Auth library requires real newline characters in the PEM key.
+    if (credentials.private_key) {
+      credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+    }
   } catch (e) {
     console.error("[Sheets] Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:", e.message);
     return;
