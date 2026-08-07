@@ -128,15 +128,34 @@ const now = new Date();
   const totalMinutes = eatDate.getUTCHours() * 60 + eatDate.getUTCMinutes();
 
   const isClassDay = [1, 3, 5].includes(dayOfWeek);
-  
-  // Extended Window: 5:30 PM (1050 min) to 12:30 AM (30 min next day) EAT
-  // totalMinutes wraps 0–1439; past midnight is 0–29
-  const isWithinWindow = totalMinutes >= 1050 || totalMinutes <= 30;
 
-  if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true" && (!isClassDay || !isWithinWindow)) {
-    return res.status(400).json({
-      message: "የአቴንዳንስ መመዝገቢያ ክፍት የሚሆነው ሰኞ፣ ረቡዕ እና ዓርብ ከማታ 11:30 እስከ 2:30 ብቻ ነው።",
-    });
+  // Peek at status so we can apply different time rules before full body parse
+  const requestStatus = req.body?.status;
+
+  if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true") {
+    if (requestStatus === "permission") {
+      // Permission windows (class days only):
+      //   Morning window → before 1 Ethiopian clock  = before 07:00 EAT (totalMinutes < 420)
+      //   Lunch   window → before 7 Ethiopian clock  = before 13:00 EAT (totalMinutes < 780)
+      // GPS is NOT required for permission — only the time window matters.
+      const isPermissionWindow = totalMinutes < 780; // covers both morning & lunch
+      if (!isClassDay || !isPermissionWindow) {
+        return res.status(400).json({
+          message:
+            "ፈቃድ ማስገባት የሚቻለው ሰኞ፣ ረቡዕ እና ዓርብ ጧት እስከ 1 ሰዓት (7 AM) ወይም ቀኑ እስከ 7 ሰዓት (1 PM) ብቻ ነው።",
+        });
+      }
+    } else {
+      // Present: must be within the class evening window
+      // Extended Window: 5:30 PM (1050 min) to 12:30 AM (30 min next day) EAT
+      // totalMinutes wraps 0–1439; past midnight is 0–29
+      const isWithinWindow = totalMinutes >= 1050 || totalMinutes <= 30;
+      if (!isClassDay || !isWithinWindow) {
+        return res.status(400).json({
+          message: "የአቴንዳንስ መመዝገቢያ ክፍት የሚሆነው ሰኞ፣ ረቡዕ እና ዓርብ ከማታ 11:30 እስከ 2:30 ብቻ ነው።",
+        });
+      }
+    }
   }
 
   try {
