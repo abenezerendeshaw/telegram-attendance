@@ -192,7 +192,7 @@ export default async function handler(req, res) {
     await sendLongMessage(BOT_TOKEN, CHAT_ID, presentTopic, presentMessage);
 
     // 2. Send Permission List -> Topic 94
-    const permissionTopic = 94;
+    const permissionTopic = parseInt(process.env.TELEGRAM_TOPIC_PERMISSION_SUMMARY || "94", 10);
     let permissionMessage = `📅 *የዛሬ ፈቃድ የጠየቁ ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
     permissionMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     if (permissionsList.length === 0) {
@@ -205,7 +205,7 @@ export default async function handler(req, res) {
     await sendLongMessage(BOT_TOKEN, CHAT_ID, permissionTopic, permissionMessage);
 
     // 3. Send Absent List -> Topic 96
-    const absentTopic = 96;
+    const absentTopic = parseInt(process.env.TELEGRAM_TOPIC_ABSENT || "96", 10);
     let absentMessage = `📅 *የዛሬ የቀሩ (ያልተመዘገቡ) ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
     absentMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     if (absentsList.length === 0) {
