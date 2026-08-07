@@ -18,10 +18,12 @@ function getEthiopianDate(date = new Date()) {
   const month = date.getMonth() + 1;
   const day = date.getDate();
 
-  let ethYear = year - 8;
-  if (month < 9 || (month === 9 && day < 11)) {
-    ethYear -= 1;
-  }
+  // Ethiopian year is Gregorian − 7 after New Year (Sep 11), or − 8 before it.
+  // Leap-year New Year falls on Sep 12 instead of Sep 11.
+  const isGregorianLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const ethNewYearDay = isGregorianLeap ? 12 : 11; // Sep 11 normally, Sep 12 in Gregorian leap years
+  const afterNewYear = month > 9 || (month === 9 && day >= ethNewYearDay);
+  let ethYear = afterNewYear ? year - 7 : year - 8;
 
   const gregorianMonths = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) {
