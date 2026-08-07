@@ -234,13 +234,16 @@ const now = new Date();
     const statusText = isPresent ? "ተገኝቷል / ተገኝታለች" : "ፈቃድ ጠይቋል / ጠይቃለች";
     const groupText = group && group.trim() ? group.trim() : "ያልተጠቀሰ";
 
-    let attendanceMessage = 
-      `📅 *${ethioFormattedDate}* | ⏰ *${formattedTime}* | 📍 *ቡድን: ${groupText}*\n` +
-      `──────────────────────────────────────\n` +
-      `👤 *${displayName}* ━━━━━━━━ 📊 *${statusText}*`;
+    let attendanceMessage =
+      `🎼 *የበገና ትምህርት ክፍል መገኘት መዝገብ*\n\n` +
+      `👤 *ሙሉ ስም:*\u2001\u2001${displayName}\n` +
+      `📍 *ቡድን:*\u2001\u2001\u2001${groupText}\n` +
+      `📊 *ሁኔታ:*\u2001\u2001\u2001${statusText}\n` +
+      `📅 *ቀን:*\u2001\u2001\u2001\u2001${ethioFormattedDate}\n` +
+      `⏰ *ሰዓት:*\u2001\u2001\u2001${formattedTime}`;
 
     if (!isPresent && reason && reason.trim()) {
-      attendanceMessage += `\n📝 *ምክንያት:* ${reason.trim()}`;
+      attendanceMessage += `\n📝 *ምክንያት:*\u2001\u2001${reason.trim()}`;
     }
 
     // Individual check-ins (present & permission) → General tab (no topic thread)
