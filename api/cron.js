@@ -187,7 +187,8 @@ export default async function handler(req, res) {
       presentMessage += `⚠️ ዛሬ የተገኘ ተማሪ የለም።\n`;
     } else {
       presentsList.forEach((s, idx) => {
-        presentMessage += `${idx + 1}. *${s.name}* (ቡድን: ${s.group.split(":")[0]})\n`;
+        const displayName = s.englishName ? `${s.name} (${s.englishName.trim()})` : s.name;
+        presentMessage += `${idx + 1}. *${displayName}* (ቡድን: ${s.group.split(":")[0]})\n`;
       });
     }
     await sendLongMessage(BOT_TOKEN, CHAT_ID, presentTopic, presentMessage);
@@ -203,7 +204,8 @@ export default async function handler(req, res) {
       permissionMessage += `✅ ዛሬ ፈቃድ የጠየቀ ተማሪ የለም።\n`;
     } else {
       permissionsList.forEach((s, idx) => {
-        permissionMessage += `${idx + 1}. *${s.name}* (ቡድን: ${s.group.split(":")[0]})\n`;
+        const displayName = s.englishName ? `${s.name} (${s.englishName.trim()})` : s.name;
+        permissionMessage += `${idx + 1}. *${displayName}* (ቡድን: ${s.group.split(":")[0]})\n`;
       });
     }
     await sendLongMessage(BOT_TOKEN, CHAT_ID, permissionTopic, permissionMessage);
@@ -216,7 +218,8 @@ export default async function handler(req, res) {
       absentMessage += `🎉 ዛሬ የቀረ ተማሪ የለም! ሁሉም ተመዝግበዋል።\n`;
     } else {
       absentsList.forEach((s, idx) => {
-        absentMessage += `${idx + 1}. *${s.name}* (ቡድን: ${s.group.split(":")[0]})\n`;
+        const displayName = s.englishName ? `${s.name} (${s.englishName.trim()})` : s.name;
+        absentMessage += `${idx + 1}. *${displayName}* (ቡድን: ${s.group.split(":")[0]})\n`;
       });
     }
     await sendLongMessage(BOT_TOKEN, CHAT_ID, absentTopic, absentMessage);

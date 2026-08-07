@@ -2,6 +2,7 @@
 import axios from "axios";
 import { google } from "googleapis";
 import { attendanceStore } from "../lib/store.js";
+import { STUDENTS } from "../src/students.js";
 // In-memory record tracking
 const dailySubmissions = new Map();
 
@@ -252,6 +253,15 @@ const now = new Date();
       }
     }
 
+    // Lookup student to get English name for dual mode display
+    const studentRecord = STUDENTS.find(
+      (s) => s.name.trim().toLowerCase() === normalizedName
+    );
+    const displayName =
+      studentRecord && studentRecord.englishName
+        ? `${fullName.trim()} (${studentRecord.englishName.trim()})`
+        : fullName.trim();
+
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
@@ -275,15 +285,14 @@ const now = new Date();
     let attendanceMessage = 
       `📅 *${ethioFormattedDate}* | ⏰ *${formattedTime}* | 📍 *ቡድን: ${groupText}*\n` +
       `──────────────────────────────────────\n` +
-      `👤 *${fullName.trim()}* ━━━━━━━━ 📊 *${statusText}*`;
+      `👤 *${displayName}* ━━━━━━━━ 📊 *${statusText}*`;
 
     if (!isPresent && reason && reason.trim()) {
       attendanceMessage += `\n📝 *ምክንያት:* ${reason.trim()}`;
     }
 
-    const rawTopicId = isPresent
-      ? (process.env.TELEGRAM_TOPIC_PRESENT_TEST || process.env.TELEGRAM_TOPIC_PRESENT)
-      : process.env.TELEGRAM_TOPIC_PERMISSION;
+    // Both Present and Permission individual check-ins go to the same Present topic ID
+    const rawTopicId = process.env.TELEGRAM_TOPIC_PRESENT_TEST || process.env.TELEGRAM_TOPIC_PRESENT || "23";
 
     const payload = {
       chat_id: CHAT_ID,
@@ -299,13 +308,13 @@ const now = new Date();
     }
 
     attendanceStore.addStudent(fullName);
-    if (!isPresent) {
-      await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
-    }
+    
+    // Send individual check-in/permission card to the shared topic
+    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
 
     // Append row to Google Sheet — columns: ሙሉ ስም | ቡድን | ሁኔታ | ቀን | ሰዓት
     await appendToSheet({
-      fullName: fullName.trim(),
+      fullName: displayName,
       group: groupText,
       status,
       date: ethioFormattedDate,
