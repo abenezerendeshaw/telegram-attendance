@@ -97,15 +97,20 @@ async function appendReceiptToSheet({ fullName, receiptNumber, date, time, image
   const range = `${sheetName}!A:E`;
   try {
     const row = [fullName, receiptNumber, date, time];
-    if (imageLink) row.push(imageLink);
-    else row.push("");
+    if (imageLink) {
+      const safeUrl = String(imageLink).replace(/"/g, '""');
+      row.push(`=IMAGE("${safeUrl}")`);
+    } else {
+      row.push("");
+    }
 
-    await sheets.spreadsheets.values.append({
+    const appendRes = await sheets.spreadsheets.values.append({
       spreadsheetId,
       range,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] },
     });
+    console.log('[Sheets] Append response:', appendRes.data?.updates || appendRes.data || 'no-data');
   } catch (e) {
     console.error('[Sheets] Failed to append receipt row:', e.message || e);
   }
