@@ -51,9 +51,10 @@ function getEthiopianDate(date = new Date()) {
 
 async function appendReceiptToSheet({ fullName, receiptNumber, date, time }) {
   const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  const sheetId = process.env.GOOGLE_SHEET_ID;
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const targetGid = process.env.GOOGLE_SHEET_RECEIPT_GID || "408411313"; // fallback to provided gid
 
-  if (!credentialsJson || !sheetId) {
+  if (!credentialsJson || !spreadsheetId) {
     console.warn('[Sheets] Skipping — no GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SHEET_ID');
     return;
   }
@@ -74,15 +75,34 @@ async function appendReceiptToSheet({ fullName, receiptNumber, date, time }) {
 
   const sheets = google.sheets({ version: "v4", auth });
 
+  // Resolve the sheet/tab title by gid (sheetId) so we can append to the correct sheet
+  let sheetName = "Sheet1";
+  try {
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: "sheets(properties(sheetId,title))",
+    });
+    const sheetsList = meta.data.sheets || [];
+    const found = sheetsList.find((s) => String(s.properties.sheetId) === String(targetGid) || s.properties.sheetId === parseInt(targetGid, 10));
+    if (found && found.properties && found.properties.title) {
+      sheetName = found.properties.title;
+    } else {
+      console.warn(`[Sheets] gid ${targetGid} not found — falling back to ${sheetName}`);
+    }
+  } catch (e) {
+    console.error('[Sheets] Failed to read spreadsheet metadata:', e.message || e);
+  }
+
+  const range = `${sheetName}!A:D`;
   try {
     await sheets.spreadsheets.values.append({
-      spreadsheetId: sheetId,
-      range: "Sheet1!A:D",
+      spreadsheetId,
+      range,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [[fullName, receiptNumber, date, time]] },
     });
   } catch (e) {
-    console.error('[Sheets] Failed to append receipt row:', e.message);
+    console.error('[Sheets] Failed to append receipt row:', e.message || e);
   }
 }
 

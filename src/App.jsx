@@ -225,9 +225,7 @@ export default function App() {
 
         <div style={styles.content}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-            <svg style={styles.iconLarge} viewBox="0 0 20 20">
-              <use href="/icons.svg#social-icon" />
-            </svg>
+
             <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝግብ</h1>
           </div>
           <p style={styles.subtitle}>ለዛሬ እባክዎ የመጀመሪያውን እርምጃ ይምረጡ።</p>
@@ -482,14 +480,14 @@ const styles = {
     width: 44,
     height: 44,
     display: 'block',
-    fill: '#d97706',
+    fill: 'var(--icon-color)',
   },
   iconSmall: {
     width: 16,
     height: 16,
     marginRight: 8,
     verticalAlign: 'middle',
-    fill: '#ffffff',
+    fill: 'var(--icon-color)',
   },
   form: {
     display: "flex",

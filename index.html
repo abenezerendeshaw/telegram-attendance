@@ -3,6 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.svg" sizes="any">
+    <link rel="apple-touch-icon" href="/favicon.svg">
+    <link rel="mask-icon" href="/icons.svg" color="#d97706">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1117">
+    <style>
+      :root { --icon-color: #d97706; }
+      @media (prefers-color-scheme: light) { :root { --icon-color: #0b0b0b; } }
+      @media (prefers-color-scheme: dark) { :root { --icon-color: #d97706; } }
+    </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <title>telegram-attendance</title>
