@@ -2,6 +2,7 @@
 import axios from "axios";
 import FormData from "form-data";
 import { google } from "googleapis";
+import { PassThrough } from "stream";
 
 function getEthiopianDate(date = new Date()) {
   const ETHIOPIAN_MONTHS = [
@@ -49,7 +50,7 @@ function getEthiopianDate(date = new Date()) {
   return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
 
-async function appendReceiptToSheet({ fullName, receiptNumber, date, time }) {
+async function appendReceiptToSheet({ fullName, receiptNumber, date, time, imageLink }) {
   const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   const targetGid = process.env.GOOGLE_SHEET_RECEIPT_GID || "408411313"; // fallback to provided gid
@@ -93,13 +94,17 @@ async function appendReceiptToSheet({ fullName, receiptNumber, date, time }) {
     console.error('[Sheets] Failed to read spreadsheet metadata:', e.message || e);
   }
 
-  const range = `${sheetName}!A:D`;
+  const range = `${sheetName}!A:E`;
   try {
+    const row = [fullName, receiptNumber, date, time];
+    if (imageLink) row.push(imageLink);
+    else row.push("");
+
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range,
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: [[fullName, receiptNumber, date, time]] },
+      requestBody: { values: [row] },
     });
   } catch (e) {
     console.error('[Sheets] Failed to append receipt row:', e.message || e);
@@ -154,8 +159,58 @@ export default async function handler(req, res) {
       maxBodyLength: Infinity,
     });
 
-    // Append to Google Sheet
-    await appendReceiptToSheet({ fullName: fullName.trim(), receiptNumber: receiptNumber.trim(), date: ethioFormattedDate, time: formattedTime });
+    // Try to upload image to Google Drive and get a public link (optional)
+    let imageLink = null;
+    try {
+      const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+      if (credentialsJson) {
+        let credentials = JSON.parse(credentialsJson);
+        if (credentials.private_key) credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+        const auth = new google.auth.GoogleAuth({
+          credentials,
+          scopes: [
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/drive",
+          ],
+        });
+        const drive = google.drive({ version: 'v3', auth });
+
+        // Create a readable stream from the buffer
+        const stream = new PassThrough();
+        stream.end(buffer);
+
+        const createRes = await drive.files.create({
+          requestBody: {
+            name: `receipt_${Date.now()}.jpg`,
+            mimeType: 'image/jpeg',
+          },
+          media: {
+            mimeType: 'image/jpeg',
+            body: stream,
+          },
+          fields: 'id,webViewLink,webContentLink',
+        });
+
+        const fileId = createRes.data.id;
+        if (fileId) {
+          try {
+            await drive.permissions.create({
+              fileId,
+              requestBody: { role: 'reader', type: 'anyone' },
+            });
+          } catch (permErr) {
+            console.warn('Drive: failed to set public permission', permErr.message || permErr);
+          }
+
+          imageLink = createRes.data.webViewLink || `https://drive.google.com/uc?id=${fileId}`;
+        }
+      }
+    } catch (driveErr) {
+      console.error('Drive upload failed:', driveErr.response?.data || driveErr.message || driveErr);
+    }
+
+    // Append to Google Sheet (include image link if available)
+    await appendReceiptToSheet({ fullName: fullName.trim(), receiptNumber: receiptNumber.trim(), date: ethioFormattedDate, time: formattedTime, imageLink });
 
     return res.status(200).json({ success: true, message: 'Receipt submitted' });
   } catch (e) {
