@@ -46,7 +46,7 @@ export default function App() {
         setIsOpen(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("pointerdown", handleClickOutside);
 
     // Initialize Telegram WebApp viewport if running inside Telegram
     if (window.Telegram?.WebApp) {
@@ -55,7 +55,7 @@ export default function App() {
       tg.expand();
     }
 
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, []);
 
   // Filter students by matching input against Amharic name OR English phonetic string
@@ -177,18 +177,80 @@ export default function App() {
     }
   };
 
+  const [mode, setMode] = useState("start");
+  const [receiptFullName, setReceiptFullName] = useState("");
+  const [receiptNumber, setReceiptNumber] = useState("");
+  const [receiptImageData, setReceiptImageData] = useState("");
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [receiptStatusMsg, setReceiptStatusMsg] = useState({ type: "", message: "" });
+
+  const handleFileChange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return setReceiptImageData("");
+    const reader = new FileReader();
+    reader.onload = () => setReceiptImageData(reader.result);
+    reader.readAsDataURL(f);
+  };
+
+  const handleReceiptSubmit = async (e) => {
+    e.preventDefault();
+    if (!receiptFullName.trim() || !receiptNumber.trim() || !receiptImageData) {
+      setReceiptStatusMsg({ type: "error", message: "ሙሉ ስም፣ ቁጥር እና ምስል አስፈላጊ ናቸው።" });
+      return;
+    }
+    setReceiptLoading(true);
+    setReceiptStatusMsg({ type: "", message: "" });
+    try {
+      await axios.post("/api/receipt", {
+        fullName: receiptFullName,
+        receiptNumber: receiptNumber,
+        imageData: receiptImageData,
+      });
+      setReceiptStatusMsg({ type: "success", message: "Receipt submitted successfully." });
+      setReceiptFullName("");
+      setReceiptNumber("");
+      setReceiptImageData("");
+    } catch (err) {
+      console.error(err);
+      setReceiptStatusMsg({ type: "error", message: err.response?.data?.message || "Submission failed" });
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
         <img src="/begena.png" alt="በገና (Begena)" style={styles.topImage} />
 
         <div style={styles.content}>
-          <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝገብ</h1>
-          <p style={styles.subtitle}>
-            ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            <svg style={styles.iconLarge} viewBox="0 0 20 20">
+              <use href="/icons.svg#social-icon" />
+            </svg>
+            <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝግብ</h1>
+          </div>
+          <p style={styles.subtitle}>ለዛሬ እባክዎ የመጀመሪያውን እርምጃ ይምረጡ።</p>
 
-          <form onSubmit={handleSubmit} style={styles.form}>
+          <div style={styles.choiceRow}>
+            <button
+              style={{ ...styles.choiceButton, ...(mode === "attendance" ? styles.choiceActive : {}) }}
+              onClick={() => setMode("attendance")}
+            >
+              <svg style={styles.iconSmall} viewBox="0 0 19 19"><use href="/icons.svg#github-icon" /></svg>
+              Attendance
+            </button>
+            <button
+              style={{ ...styles.choiceButton, ...(mode === "receipt" ? styles.choiceActive : {}) }}
+              onClick={() => setMode("receipt")}
+            >
+              <svg style={styles.iconSmall} viewBox="0 0 16 17"><use href="/icons.svg#bluesky-icon" /></svg>
+              Upload Receipt
+            </button>
+          </div>
+
+          {mode === "attendance" && (
+            <form onSubmit={handleSubmit} style={styles.form}>
             {/* Bilingual Search Container */}
             <div style={styles.inputGroup} ref={dropdownRef}>
               <label style={styles.label}>ስምዎን ይፈልጉ / Search Name</label>
@@ -198,12 +260,20 @@ export default function App() {
                   placeholder="በአማርኛ ወይም በEnglish ይፃፉ..."
                   value={searchTerm}
                   onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setSelectedStudent(null);
+                    const val = e.target.value;
+                    setSearchTerm(val);
+                    // Only clear selection if user is editing away from the selected name
+                    if (selectedStudent && val !== selectedStudent.name) {
+                      setSelectedStudent(null);
+                    }
                     setIsOpen(true);
                     if (status.type) setStatus({ type: "", message: "" });
                   }}
                   onFocus={() => setIsOpen(true)}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                   style={styles.input}
                 />
 
@@ -214,7 +284,8 @@ export default function App() {
                       filteredStudents.slice(0, 30).map((st, idx) => (
                         <li
                           key={idx}
-                          onClick={() => {
+                          onPointerDown={(e) => {
+                            e.preventDefault(); // prevent input blur before selection
                             setSelectedStudent(st);
                             setSearchTerm(st.name);
                             setIsOpen(false);
@@ -288,10 +359,56 @@ export default function App() {
               </p>
             )}
 
-            <button type="submit" disabled={loading} style={styles.button}>
-              {loading ? "በመመዝገብ ላይ..." : "መረጃውን መዝግብ"}
-            </button>
-          </form>
+              <button type="submit" disabled={loading} style={styles.button}>
+                {loading ? "በመመዝገብ ላይ..." : "መረጃውን መዝግብ"}
+              </button>
+            </form>
+          )}
+
+          {mode === "receipt" && (
+            <form onSubmit={handleReceiptSubmit} style={styles.form}>
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Full Name</label>
+                <input
+                  value={receiptFullName}
+                  onChange={(e) => setReceiptFullName(e.target.value)}
+                  style={styles.input}
+                  placeholder="Full name"
+                />
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Receipt Number</label>
+                <input
+                  value={receiptNumber}
+                  onChange={(e) => setReceiptNumber(e.target.value)}
+                  style={styles.input}
+                  placeholder="Receipt #"
+                />
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Screenshot</label>
+                <input type="file" accept="image/*" onChange={handleFileChange} style={styles.input} />
+                {receiptImageData && (
+                  <img src={receiptImageData} alt="preview" style={{ width: '100%', borderRadius: 8, marginTop: 8 }} />
+                )}
+              </div>
+
+              {receiptStatusMsg.message && (
+                <p style={receiptStatusMsg.type === 'error' ? styles.errorMsg : styles.successMsg}>{receiptStatusMsg.message}</p>
+              )}
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="submit" disabled={receiptLoading} style={styles.button}>
+                  {receiptLoading ? 'Sending...' : 'Submit Receipt'}
+                </button>
+                <button type="button" onClick={() => setMode('start')} style={{ ...styles.button, backgroundColor: '#334155' }}>
+                  Back
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>
@@ -341,6 +458,38 @@ const styles = {
     fontSize: "13px",
     color: "#a0a0a0",
     margin: "0 0 20px 0",
+  },
+  choiceRow: {
+    display: 'flex',
+    gap: 10,
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  choiceButton: {
+    padding: '10px 14px',
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    color: '#fff',
+    border: '1px solid rgba(255,255,255,0.06)',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  choiceActive: {
+    backgroundColor: '#d97706',
+    borderColor: 'transparent',
+  },
+  iconLarge: {
+    width: 44,
+    height: 44,
+    display: 'block',
+    fill: '#d97706',
+  },
+  iconSmall: {
+    width: 16,
+    height: 16,
+    marginRight: 8,
+    verticalAlign: 'middle',
+    fill: '#ffffff',
   },
   form: {
     display: "flex",
