@@ -164,7 +164,7 @@ export default function App() {
     }
   };
 
-  const [mode, setMode] = useState("start");
+  const [mode, setMode] = useState("attendance");
   const [receiptFullName, setReceiptFullName] = useState("");
   const [receiptNumber, setReceiptNumber] = useState("");
   const [receiptImageData, setReceiptImageData] = useState("");
@@ -250,7 +250,7 @@ export default function App() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
             <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝግብ</h1>
           </div>
-          <p style={styles.subtitle}>ለዛሬ እባክዎ የመጀመሪያውን እርምጃ ይምረጡ።</p>
+          <p style={styles.subtitle}>ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።</p>
 
           <div style={styles.choiceRow}>
             <button
