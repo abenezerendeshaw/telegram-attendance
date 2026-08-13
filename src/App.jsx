@@ -18,8 +18,14 @@ export default function App() {
 
   const dropdownRef = useRef(null);
 
+  // Admin mode — skip all locks when ?admin=1 is in the URL
+  const isAdminMode = new URLSearchParams(window.location.search).get("admin") === "1";
+
   useEffect(() => {
     const checkLockStatus = () => {
+      // Skip localStorage lock entirely in admin mode
+      if (isAdminMode) return;
+
       const lastSubmission = localStorage.getItem("last_attendance_timestamp");
       if (lastSubmission) {
         const now = Date.now();
@@ -130,13 +136,17 @@ export default function App() {
         group: selectedStudent.group,
         status: attendanceStatus,
         reason: attendanceStatus === "permission" ? reason : "",
+        ...(isAdminMode && { adminOverride: true }),
         ...coords,
       });
 
       const nowTimestamp = Date.now();
-      localStorage.setItem("last_attendance_timestamp", nowTimestamp.toString());
-      setIsLocked(true);
-      setHoursLeft(24);
+      // Only set the lock in normal (non-admin) mode
+      if (!isAdminMode) {
+        localStorage.setItem("last_attendance_timestamp", nowTimestamp.toString());
+        setIsLocked(true);
+        setHoursLeft(24);
+      }
 
       setStatus({ type: "success", message: "✅ መረጃዎ በተሳካ ሁኔታ ተመዝግቧል!" });
 

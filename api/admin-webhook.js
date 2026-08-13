@@ -144,6 +144,7 @@ async function handleHelp(token, chatId) {
   const help = `
 🛠 *የአስተዳዳሪ ቦት ትዕዛዞች*
 
+/submit — አቴንዳንስ መዝግብ (ምንም ገደብ የለም)
 /today — የዛሬ ሙሉ ማጠቃለያ (ተገኙ / ፈቃድ / ቀሩ)
 /present — ዛሬ የተገኙ ተማሪዎች ዝርዝር
 /permission — ዛሬ ፈቃድ የጠየቁ ዝርዝር
@@ -601,8 +602,24 @@ export default async function handler(req, res) {
       const welcome =
         `👋 ሰላም *${firstName}*!\n\n` +
         `🛠 ወደ *የበገና ትምህርት አስተዳዳሪ ቦት* እንኳን ደህና መጡ!\n\n` +
+        `📝 አቴንዳንስ ለመመዝገብ /submit\n` +
         `ሁሉም ትዕዛዞችን ለማየት /help ይጫኑ።`;
       await sendMessage(ADMIN_BOT_TOKEN, chatId, welcome);
+    } else if (text.startsWith("/submit")) {
+      // Open mini app in admin mode (no lock, no time/GPS restriction)
+      await axios.post(`https://api.telegram.org/bot${ADMIN_BOT_TOKEN}/sendMessage`, {
+        chat_id: chatId,
+        text: "📝 *አቴንዳንስ ለመመዝገብ ከታች ይጫኑ:*\n_(የጊዜ እና GPS ገደብ የለም)_",
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [[
+            {
+              text: "📝 አቴንዳንስ መዝግብ (Admin)",
+              web_app: { url: "https://telegram-attendance-dzbz.vercel.app/?admin=1" },
+            },
+          ]],
+        },
+      });
     } else if (text.startsWith("/help")) {
       await handleHelp(ADMIN_BOT_TOKEN, chatId);
     } else if (text.startsWith("/today")) {

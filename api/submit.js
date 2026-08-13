@@ -176,9 +176,13 @@ const now = new Date();
     const userKey = `${todayKey}_${normalizedName}`;
 
     if (process.env.DISABLE_SINGLE_SUBMISSION_CHECK !== "true" && dailySubmissions.has(userKey)) {
-      return res.status(400).json({
-        message: "ለዛሬ መዝግበዋል። በአንድ ቀን ከአንድ ጊዜ በላይ መመዝገብ አይቻልም።",
-      });
+      // Allow override if request comes from admin mode
+      const isAdminOverride = req.body?.adminOverride === true;
+      if (!isAdminOverride) {
+        return res.status(400).json({
+          message: "ለዛሬ መዝግበዋል። በአንድ ቀን ከአንድ ጊዜ በላይ መመዝገብ አይቻልም።",
+        });
+      }
     }
 
     if (status === "permission" && (!reason || !reason.trim())) {
