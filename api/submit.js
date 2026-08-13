@@ -83,9 +83,6 @@ async function appendToSheet({ fullName, group, status, date, time }) {
   let credentials;
   try {
     credentials = JSON.parse(credentialsJson);
-    // Normalize escaped newlines in the private key.
-    // When stored as a single-line env var, \n sequences become literal \\n;
-    // the Google Auth library requires real newline characters in the PEM key.
     if (credentials.private_key) {
       credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
     }
@@ -105,19 +102,63 @@ async function appendToSheet({ fullName, group, status, date, time }) {
     ? "ተገኝቷል / ተገኝታለች"
     : "ፈቃድ ጠይቋል / ጠይቃለች";
 
+  // ── Always append to master Sheet1 ──────────────────────────────────────
   try {
-    const result = await sheets.spreadsheets.values.append({
+    await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
-      range: "Sheet1!A:E", // ሙሉ ስም | ቡድን | ሁኔታ | ቀን | ሰዓት
+      range: "Sheet1!A:E",
       valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [[fullName, group, statusText, date, time]],
-      },
+      requestBody: { values: [[fullName, group, statusText, date, time]] },
     });
-    console.log("[Sheets] Row appended successfully:", result.data.updates?.updatedRange);
+    console.log("[Sheets] Row appended to Sheet1");
   } catch (e) {
-    console.error("[Sheets] Failed to append row:", e.message, e.response?.data || "");
-    // Don't rethrow — sheet failure should not block the main response
+    console.error("[Sheets] Failed to append to Sheet1:", e.message, e.response?.data || "");
+  }
+
+  // ── Also append to the daily tab (named by the Ethiopian date) ───────────
+  // Tab name: use the date string but shorten it to fit Sheet tab limits (100 chars max)
+  // e.g. "ሰኞ፣ መስከረም 5 ቀን 2017 ዓ.ም" → used as-is (well within 100 chars)
+  const dailyTabName = date; // Ethiopian date string is the tab name
+
+  try {
+    // Check if the daily tab already exists
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId: sheetId,
+      fields: "sheets(properties(title))",
+    });
+    const existingTabs = (meta.data.sheets || []).map((s) => s.properties.title);
+
+    if (!existingTabs.includes(dailyTabName)) {
+      // Create the tab
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sheetId,
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: dailyTabName } } }],
+        },
+      });
+      // Add header row
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: sheetId,
+        range: `'${dailyTabName}'!A:E`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: {
+          values: [["ሙሉ ስም", "ቡድን", "ሁኔታ", "ቀን", "ሰዓት"]],
+        },
+      });
+      console.log(`[Sheets] Created daily tab: ${dailyTabName}`);
+    }
+
+    // Append to daily tab
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: sheetId,
+      range: `'${dailyTabName}'!A:E`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [[fullName, group, statusText, date, time]] },
+    });
+    console.log(`[Sheets] Row appended to daily tab: ${dailyTabName}`);
+  } catch (e) {
+    console.error("[Sheets] Failed to append to daily tab:", e.message, e.response?.data || "");
+    // Don't rethrow — daily tab failure should not block the main response
   }
 }
 

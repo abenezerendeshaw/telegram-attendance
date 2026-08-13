@@ -93,14 +93,12 @@ async function sendLongMessage(botToken, chatId, topicId, text) {
 }
 
 export default async function handler(req, res) {
-  // Verify Vercel Cron Signature to secure the endpoint (allow bypass parameter for testing)
+  // Verify Vercel Cron Signature — only enforce if CRON_SECRET is actually configured
   const authHeader = req.headers.authorization;
   const isBypassed = req.query.bypass === "true";
-  if (
-    process.env.NODE_ENV === "production" &&
-    !isBypassed &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET}`
-  ) {
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret && !isBypassed && authHeader !== `Bearer ${cronSecret}`) {
     return res.status(401).json({ success: false, message: "Unauthorized" });
   }
 
