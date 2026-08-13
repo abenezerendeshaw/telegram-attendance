@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   try {
     const { message } = req.body;
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const WEB_APP_URL = "https://telegram-attendance.vercel.app/";
+    const WEB_APP_URL = "https://telegram-attendance-dzbz.vercel.app/";
 
     if (message && message.text) {
       const chatId = message.chat.id;
