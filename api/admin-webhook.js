@@ -615,7 +615,7 @@ export default async function handler(req, res) {
           inline_keyboard: [[
             {
               text: "📝 አቴንዳንስ መዝግብ (Admin)",
-              web_app: { url: "https://telegram-attendance-dzbz.vercel.app/?admin=1" },
+              web_app: { url: "https://telegram-attendance-dzbz.vercel.app/#admin" },
             },
           ]],
         },

@@ -18,8 +18,11 @@ export default function App() {
 
   const dropdownRef = useRef(null);
 
-  // Admin mode — skip all locks when ?admin=1 is in the URL
-  const isAdminMode = new URLSearchParams(window.location.search).get("admin") === "1";
+  // Admin mode — skip all locks when #admin is in the URL hash OR ?admin=1 in query
+  // Note: Telegram Web Apps strip query params but preserve the hash fragment
+  const isAdminMode =
+    window.location.hash.includes("admin") ||
+    new URLSearchParams(window.location.search).get("admin") === "1";
 
   useEffect(() => {
     const checkLockStatus = () => {
