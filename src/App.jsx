@@ -175,8 +175,8 @@ export default function App() {
   };
 
   const [mode, setMode] = useState("attendance");
-  const [receiptFullName, setReceiptFullName] = useState("");
-  const [receiptNumber, setReceiptNumber] = useState("");
+  const [receiptPayerName, setReceiptPayerName] = useState("");
+  const [receiptStudentName, setReceiptStudentName] = useState("");
   const [receiptImageData, setReceiptImageData] = useState("");
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptStatusMsg, setReceiptStatusMsg] = useState({ type: "", message: "" });
@@ -224,21 +224,21 @@ export default function App() {
   const handleReceiptSubmit = async (e) => {
     e.preventDefault();
     // Validation
-    if (!receiptFullName.trim() || !receiptNumber.trim() || !receiptImageData) {
-      setReceiptStatusMsg({ type: "error", message: "ሙሉ ስም፣ ቁጥር እና ምስል አስፈላጊ ናቸው።" });
+    if (!receiptPayerName.trim() || !receiptStudentName.trim() || !receiptImageData) {
+      setReceiptStatusMsg({ type: "error", message: "ሁሉም መስኮች አስፈላጊ ናቸው።" });
       return;
     }
     setReceiptLoading(true);
     setReceiptStatusMsg({ type: "", message: "" });
     try {
       await axios.post("/api/receipt", {
-        fullName: receiptFullName,
-        receiptNumber: receiptNumber,
+        payerName: receiptPayerName,
+        studentName: receiptStudentName,
         imageData: receiptImageData,
       });
-      setReceiptStatusMsg({ type: "success", message: "✅ Receipt submitted successfully." });
-      setReceiptFullName("");
-      setReceiptNumber("");
+      setReceiptStatusMsg({ type: "success", message: "✅ ደረሰኙ በተሳካ ሁኔታ ተልኳል።" });
+      setReceiptPayerName("");
+      setReceiptStudentName("");
       setReceiptImageData("");
       // Reset file input
       const input = document.getElementById("receiptFileInput");
@@ -380,39 +380,39 @@ export default function App() {
 
           {mode === "receipt" && (
             <form onSubmit={handleReceiptSubmit} style={styles.form}>
-              {/* Full Name */}
+              {/* Payer Name */}
               <div style={styles.inputGroup}>
-                <label style={styles.label}>Full Name <span style={{ color: '#ff6b6b' }}>*</span></label>
+                <label style={styles.label}>ክፍያውን የፈጸመው ስም <span style={{ color: '#ff6b6b' }}>*</span></label>
                 <input
-                  value={receiptFullName}
+                  value={receiptPayerName}
                   onChange={(e) => {
-                    setReceiptFullName(e.target.value);
+                    setReceiptPayerName(e.target.value);
                     if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
                   }}
                   style={styles.input}
-                  placeholder="Enter your full name"
+                  placeholder="ክፍያ የፈጸመውን ሰው ስም ያስገቡ"
                   required
                 />
               </div>
 
-              {/* Receipt Number */}
+              {/* Student Name */}
               <div style={styles.inputGroup}>
-                <label style={styles.label}>Receipt Number <span style={{ color: '#ff6b6b' }}>*</span></label>
+                <label style={styles.label}>የተከፈለለት ተማሪ ስም <span style={{ color: '#ff6b6b' }}>*</span></label>
                 <input
-                  value={receiptNumber}
+                  value={receiptStudentName}
                   onChange={(e) => {
-                    setReceiptNumber(e.target.value);
+                    setReceiptStudentName(e.target.value);
                     if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
                   }}
                   style={styles.input}
-                  placeholder="e.g. RCP-2026-001"
+                  placeholder="ክፍያ የተፈጸመለትን ተማሪ ስም ያስገቡ"
                   required
                 />
               </div>
 
               {/* Image Upload - Professional Drop Zone */}
               <div style={styles.inputGroup}>
-                <label style={styles.label}>Receipt Image <span style={{ color: '#ff6b6b' }}>*</span></label>
+                <label style={styles.label}>የደረሰኝ ምስል <span style={{ color: '#ff6b6b' }}>*</span></label>
                 <div
                   style={{
                     ...styles.uploadArea,
@@ -475,10 +475,10 @@ export default function App() {
                   {receiptLoading ? (
                     <>
                       <span style={styles.spinner}></span>
-                      Submitting...
+                      በመላክ ላይ...
                     </>
                   ) : (
-                    'Submit Receipt'
+                    'ደረሰኙን ላክ'
                   )}
                 </button>
                 <button

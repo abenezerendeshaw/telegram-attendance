@@ -50,10 +50,9 @@ function getEthiopianDate(date = new Date()) {
   return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
 
-async function appendReceiptToSheet({ fullName, receiptNumber, date, time, imageLink }) {
+async function appendReceiptToSheet({ payerName, studentName, date, time, imageLink }) {
   const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  const targetGid = process.env.GOOGLE_SHEET_RECEIPT_GID || "408411313"; // fallback to provided gid
 
   if (!credentialsJson || !spreadsheetId) {
     console.warn('[Sheets] Skipping — no GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SHEET_ID');
@@ -76,27 +75,53 @@ async function appendReceiptToSheet({ fullName, receiptNumber, date, time, image
 
   const sheets = google.sheets({ version: "v4", auth });
 
-  // Resolve the sheet/tab title by gid (sheetId) so we can append to the correct sheet
-  let sheetName = "Sheet1";
+  // Ensure the "ክፍያ" tab exists; create it if not
+  const RECEIPT_SHEET_NAME = "ክፍያ";
+  let sheetExists = false;
   try {
     const meta = await sheets.spreadsheets.get({
       spreadsheetId,
-      fields: "sheets(properties(sheetId,title))",
+      fields: "sheets(properties(title))",
     });
-    const sheetsList = meta.data.sheets || [];
-    const found = sheetsList.find((s) => String(s.properties.sheetId) === String(targetGid) || s.properties.sheetId === parseInt(targetGid, 10));
-    if (found && found.properties && found.properties.title) {
-      sheetName = found.properties.title;
-    } else {
-      console.warn(`[Sheets] gid ${targetGid} not found — falling back to ${sheetName}`);
-    }
+    sheetExists = (meta.data.sheets || []).some(
+      (s) => s.properties.title === RECEIPT_SHEET_NAME
+    );
   } catch (e) {
-    console.error('[Sheets] Failed to read spreadsheet metadata:', e.message || e);
+    console.error('[Sheets] Failed to read spreadsheet metadata:', e.message);
   }
 
-  const range = `${sheetName}!A:E`;
+  if (!sheetExists) {
+    try {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              addSheet: {
+                properties: { title: RECEIPT_SHEET_NAME },
+              },
+            },
+          ],
+        },
+      });
+      // Add header row
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: `${RECEIPT_SHEET_NAME}!A:E`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: {
+          values: [["ክፍያውን የፈጸመው ስም", "የተከፈለለት ተማሪ ስም", "ቀን", "ሰዓት", "ምስል"]],
+        },
+      });
+      console.log(`[Sheets] Created new tab: ${RECEIPT_SHEET_NAME}`);
+    } catch (e) {
+      console.error('[Sheets] Failed to create receipt tab:', e.message);
+    }
+  }
+
+  const range = `${RECEIPT_SHEET_NAME}!A:E`;
   try {
-    const row = [fullName, receiptNumber, date, time];
+    const row = [payerName, studentName, date, time];
     if (imageLink) {
       const safeUrl = String(imageLink).replace(/"/g, '""');
       row.push(`=IMAGE("${safeUrl}")`);
@@ -104,15 +129,15 @@ async function appendReceiptToSheet({ fullName, receiptNumber, date, time, image
       row.push("");
     }
 
-    const appendRes = await sheets.spreadsheets.values.append({
+    await sheets.spreadsheets.values.append({
       spreadsheetId,
       range,
       valueInputOption: "USER_ENTERED",
       requestBody: { values: [row] },
     });
-    console.log('[Sheets] Append response:', appendRes.data?.updates || appendRes.data || 'no-data');
+    console.log('[Sheets] Receipt row appended to ክፍያ tab');
   } catch (e) {
-    console.error('[Sheets] Failed to append receipt row:', e.message || e);
+    console.error('[Sheets] Failed to append receipt row:', e.message);
   }
 }
 
@@ -120,10 +145,10 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ message: "Method Not Allowed" });
 
   try {
-    const { fullName, receiptNumber, imageData } = req.body;
-    if (!fullName || !fullName.trim()) return res.status(400).json({ message: "Full name is required" });
-    if (!receiptNumber || !receiptNumber.trim()) return res.status(400).json({ message: "Receipt number is required" });
-    if (!imageData || typeof imageData !== 'string') return res.status(400).json({ message: "Image is required" });
+    const { payerName, studentName, imageData } = req.body;
+    if (!payerName || !payerName.trim()) return res.status(400).json({ message: "ክፍያውን የፈጸመው ስም አስፈላጊ ነው።" });
+    if (!studentName || !studentName.trim()) return res.status(400).json({ message: "የተከፈለለት ተማሪ ስም አስፈላጊ ነው።" });
+    if (!imageData || typeof imageData !== 'string') return res.status(400).json({ message: "ምስሉን ማስገባት አስፈላጊ ነው።" });
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -154,7 +179,7 @@ export default async function handler(req, res) {
     const form = new FormData();
     form.append('chat_id', CHAT_ID);
     if (TOPIC) form.append('message_thread_id', TOPIC);
-    const caption = `📤 *Receipt Submission*\n👤 ${fullName.trim()}\n🔢 Receipt #: ${receiptNumber.trim()}`;
+    const caption = `� *የክፍያ ደረሰኝ*\n👤 *ክፍያ የፈጸመ:* ${payerName.trim()}\n🎓 *የተከፈለለት ተማሪ:* ${studentName.trim()}\n📅 ${ethioFormattedDate} — ⏰ ${formattedTime}`;
     form.append('caption', caption);
     form.append('parse_mode', 'Markdown');
     form.append('photo', buffer, { filename: 'receipt.jpg' });
@@ -215,7 +240,7 @@ export default async function handler(req, res) {
     }
 
     // Append to Google Sheet (include image link if available)
-    await appendReceiptToSheet({ fullName: fullName.trim(), receiptNumber: receiptNumber.trim(), date: ethioFormattedDate, time: formattedTime, imageLink });
+    await appendReceiptToSheet({ payerName: payerName.trim(), studentName: studentName.trim(), date: ethioFormattedDate, time: formattedTime, imageLink });
 
     return res.status(200).json({ success: true, message: 'Receipt submitted' });
   } catch (e) {
