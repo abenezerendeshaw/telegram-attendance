@@ -128,23 +128,21 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: "Method Not Allowed" });
   }
 
-const now = new Date();
+  const now = new Date();
   const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000); // UTC+3
   const dayOfWeek = eatDate.getUTCDay(); // 1 = Mon, 3 = Wed, 5 = Fri
   const totalMinutes = eatDate.getUTCHours() * 60 + eatDate.getUTCMinutes();
 
   const isClassDay = [1, 3, 5].includes(dayOfWeek);
 
-  // Peek at status so we can apply different time rules before full body parse
+  // Peek at both status and adminOverride early
   const requestStatus = req.body?.status;
+  const isAdminOverride = req.body?.adminOverride === true;
 
-  if (process.env.ALLOW_OFFTIME_SUBMISSION !== "true") {
+  // Skip ALL time/day/GPS/duplicate checks when admin override is set
+  if (!isAdminOverride && process.env.ALLOW_OFFTIME_SUBMISSION !== "true") {
     if (requestStatus === "permission") {
-      // Permission windows (class days only):
-      //   Morning window → before 1 Ethiopian clock  = before 07:00 EAT (totalMinutes < 420)
-      //   Lunch   window → before 7 Ethiopian clock  = before 13:00 EAT (totalMinutes < 780)
-      // GPS is NOT required for permission — only the time window matters.
-      const isPermissionWindow = totalMinutes < 780; // covers both morning & lunch
+      const isPermissionWindow = totalMinutes < 780;
       if (!isClassDay || !isPermissionWindow) {
         return res.status(400).json({
           message:
@@ -152,9 +150,6 @@ const now = new Date();
         });
       }
     } else {
-      // Present: must be within the class evening window
-      // Extended Window: 5:30 PM (1050 min) to 12:30 AM (30 min next day) EAT
-      // totalMinutes wraps 0–1439; past midnight is 0–29
       const isWithinWindow = totalMinutes >= 1050 || totalMinutes <= 30;
       if (!isClassDay || !isWithinWindow) {
         return res.status(400).json({
@@ -176,8 +171,6 @@ const now = new Date();
     const userKey = `${todayKey}_${normalizedName}`;
 
     if (process.env.DISABLE_SINGLE_SUBMISSION_CHECK !== "true" && dailySubmissions.has(userKey)) {
-      // Allow override if request comes from admin mode
-      const isAdminOverride = req.body?.adminOverride === true;
       if (!isAdminOverride) {
         return res.status(400).json({
           message: "ለዛሬ መዝግበዋል። በአንድ ቀን ከአንድ ጊዜ በላይ መመዝገብ አይቻልም።",
@@ -189,7 +182,7 @@ const now = new Date();
       return res.status(400).json({ message: "እባክዎ የፈቃድ ምክንያትዎን ያስገቡ።" });
     }
 
-    if (status === "present" && process.env.DISABLE_GPS_CHECK !== "true") {
+    if (status === "present" && !isAdminOverride && process.env.DISABLE_GPS_CHECK !== "true") {
       if (!latitude || !longitude) {
         return res.status(400).json({
           message: "ቦታዎን ማረጋገጥ አልተቻለም። እባክዎ የስልክዎን ቦታ (Location / GPS) ያብሩ።",
