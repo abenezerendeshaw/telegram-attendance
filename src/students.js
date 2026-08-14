@@ -24,7 +24,7 @@ export const STUDENTS = [
   { name: "ብርሃኑ ቦንጋ", englishName: "birhanu bonga", group: "ቡድን 1: ቤተ አውታር" },
   { name: "ትዕግስት አሰፋ", englishName: "tigist assefa", group: "ቡድን 1: ቤተ አውታር" },
   { name: "ነጻነት በኃይሉ", englishName: "netsanet behailu", group: "ቡድን 1: ቤተ አውታር" },
-  { name: "እጸደማርያም ጋሹ", englishName: "etsedemariyam gashu", group: "ቡድን 1: ቤተ አውታር" },
+  { name: "አጸደማርያም ጋሹ", englishName: "Atsedemariyam gashu", group: "ቡድን 1: ቤተ አውታር" },
   { name: "ስምረት መኮንን", englishName: "simret mekonnen", group: "ቡድን 1: ቤተ አውታር" },
   { name: "ቤተልሔም ታደሰ", englishName: "betlehem tadese betelhem", group: "ቡድን 1: ቤተ አውታር" },
   { name: "ሔለን ሙላት", englishName: "helen mulat", group: "ቡድን 1: ቤተ አውታር" },
@@ -206,5 +206,25 @@ export const STUDENTS = [
   { name: "ሩሃማ መኮንን", englishName: "ruhama mekonnen", group: "ቡድን 4: ቤተ እንዚራ" },
   { name: "ቅድስት አለማየሁ", englishName: "kidist alemayehu", group: "ቡድን 4: ቤተ እንዚራ" },
   { name: "የምስራች አለሙ", englishName: "yemisrach alemu", group: "ቡድን 4: ቤተ እንዚራ" },
-  { name: "አዶኒያስ ሳህሌ", englishName: "adoniyas sahle adonias", group: "ቡድን 4: ቤተ እንዚራ" }
+  { name: "አዶኒያስ ሳህሌ", englishName: "adoniyas sahle adonias", group: "ቡድን 4: ቤተ እንዚራ" },
+
+
+
+
+    { name: "እየሩሳሌም ሰኢድ", englishName: "Eyerusalem seid", group: "ቡድን 4: ቤተ እንዚራ" },
+    
+    { name: "ዝናሽ አሰፋ", englishName: "Zinash Asefa", group: "ቡድን 4: ቤተ እንዚራ" },
+
+     { name: "ማህደር ቶሎሳ", englishName: "mahder tolosa", group: "ቡድን 4: ቤተ እንዚራ" },
+
+       { name: "አለም ጌቱ", englishName: "alem getu", group: "ቡድን 4: ቤተ እንዚራ" },
+
+    { name: "አማኑኤል ዘለቀ", englishName: "amanuel zeleke", group: "ቡድን 4: ቤተ እንዚራ" },
+      
+   
+
+
+
+
+
 ];

@@ -232,7 +232,7 @@ export default async function handler(req, res) {
 
       const CLASS_LAT = parseFloat(process.env.CLASS_LAT || "9.010211");
       const CLASS_LNG = parseFloat(process.env.CLASS_LNG || "38.761234");
-      const MAX_DISTANCE = parseFloat(process.env.MAX_DISTANCE_METERS || "100");
+      const MAX_DISTANCE = parseFloat(process.env.MAX_DISTANCE_METERS || "400");
 
       const distance = getDistanceInMeters(CLASS_LAT, CLASS_LNG, parseFloat(latitude), parseFloat(longitude));
 
