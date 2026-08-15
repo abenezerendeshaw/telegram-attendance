@@ -110,39 +110,58 @@ function getEthiopianToday() {
   return getEthiopianDate(eatDate);
 }
 
-// Reads today's rows from the daily tab if it exists, falls back to Sheet1 filter
-async function getTodayRowsFromSheet() {
+// Reads rows for the LATEST date that has data in the sheet.
+// Returns { rows, date } where date is the Ethiopian date string used.
+async function getLatestRowsFromSheet() {
   const sheets = await getSheetsClient();
   const sheetId = process.env.GOOGLE_SHEET_ID;
-  const ethioToday = getEthiopianToday();
 
   try {
     const meta = await sheets.spreadsheets.get({
       spreadsheetId: sheetId,
-      fields: "sheets(properties(title))",
+      fields: "sheets(properties(title,index))",
     });
-    const existingTabs = (meta.data.sheets || []).map((s) => s.properties.title);
+    const tabs = (meta.data.sheets || []).map((s) => s.properties.title);
 
-    if (existingTabs.includes(ethioToday)) {
-      // Daily tab exists — read all rows, skip the header row
+    // Daily tabs are Ethiopian date strings — pick the last one (highest index)
+    // Skip Sheet1 itself and any non-date tabs
+    const dateTabs = tabs.filter((t) => t !== "Sheet1" && t.trim().length > 0);
+
+    if (dateTabs.length > 0) {
+      // The last tab in the list is the most recent daily tab
+      const latestTab = dateTabs[dateTabs.length - 1];
       const dailyResponse = await sheets.spreadsheets.values.get({
         spreadsheetId: sheetId,
-        range: `'${ethioToday}'!A:E`,
+        range: `'${latestTab}'!A:E`,
       });
       const dailyRows = dailyResponse.data.values || [];
-      return dailyRows.length > 1 ? dailyRows.slice(1) : [];
+      const rows = dailyRows.length > 1 ? dailyRows.slice(1) : [];
+      if (rows.length > 0) {
+        return { rows, date: latestTab };
+      }
     }
   } catch (_) {
     // fall through to Sheet1 filter
   }
 
-  // Fallback: filter master Sheet1 by date column
+  // Fallback: find the latest date in Sheet1 by date column (col D, index 3)
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: sheetId,
     range: "Sheet1!A:E",
   });
-  const rows = response.data.values || [];
-  return rows.filter((row) => row[3] === ethioToday);
+  const allRows = response.data.values || [];
+
+  // Collect all unique dates present in the data
+  const dates = [...new Set(allRows.map((r) => r[3]).filter(Boolean))];
+
+  if (dates.length === 0) {
+    return { rows: [], date: getEthiopianToday() };
+  }
+
+  // The last unique date in the sheet is the most recent one
+  const latestDate = dates[dates.length - 1];
+  const rows = allRows.filter((row) => row[3] === latestDate);
+  return { rows, date: latestDate };
 }
 
 // ─── Telegram send helper ─────────────────────────────────────────────────────
@@ -196,8 +215,7 @@ async function handleHelp(token, chatId) {
 }
 
 async function handleToday(token, chatId) {
-  const todayRows = await getTodayRowsFromSheet();
-  const ethioToday = getEthiopianToday();
+  const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
 
   const presentNames = new Set();
   const permissionNames = new Set();
@@ -227,7 +245,7 @@ async function handleToday(token, chatId) {
   const total = STUDENTS.length;
 
   let msg =
-    `📊 *የዛሬ ማጠቃለያ — ${ethioToday}*\n` +
+    `📊 *የቅርብ ቀን ማጠቃለያ — ${latestDate}*\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
     `✅ ተገኙ: *${presentList.length}/${total}*\n` +
     `📝 ፈቃድ: *${permissionList.length}/${total}*\n` +
@@ -251,8 +269,7 @@ async function handleToday(token, chatId) {
 }
 
 async function handlePresent(token, chatId) {
-  const todayRows = await getTodayRowsFromSheet();
-  const ethioToday = getEthiopianToday();
+  const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
 
   const presentNames = new Set(
     todayRows
@@ -264,10 +281,10 @@ async function handlePresent(token, chatId) {
     presentNames.has(s.name.trim().toLowerCase())
   );
 
-  let msg = `✅ *ዛሬ የተገኙ ተማሪዎች — ${ethioToday}* (${presentList.length})\n`;
+  let msg = `✅ *የተገኙ ተማሪዎች — ${latestDate}* (${presentList.length})\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   if (presentList.length === 0) {
-    msg += "⚠️ ዛሬ ማንም አልተገኘም።\n";
+    msg += "⚠️ ማንም አልተገኘም።\n";
   } else {
     presentList.forEach((s, i) => {
       const display = s.englishName
@@ -281,8 +298,7 @@ async function handlePresent(token, chatId) {
 }
 
 async function handlePermission(token, chatId) {
-  const todayRows = await getTodayRowsFromSheet();
-  const ethioToday = getEthiopianToday();
+  const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
 
   const permRows = todayRows.filter(
     (r) => !(r[2] || "").includes("ተገኝቷል")
@@ -304,10 +320,10 @@ async function handlePermission(token, chatId) {
     permNames.has(s.name.trim().toLowerCase())
   );
 
-  let msg = `📝 *ዛሬ ፈቃድ የጠየቁ ተማሪዎች — ${ethioToday}* (${permList.length})\n`;
+  let msg = `📝 *ፈቃድ የጠየቁ ተማሪዎች — ${latestDate}* (${permList.length})\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   if (permList.length === 0) {
-    msg += "✅ ዛሬ ፈቃድ የጠየቀ ተማሪ የለም።\n";
+    msg += "✅ ፈቃድ የጠየቀ ተማሪ የለም።\n";
   } else {
     permList.forEach((s, i) => {
       const display = s.englishName
@@ -324,8 +340,7 @@ async function handlePermission(token, chatId) {
 }
 
 async function handleAbsent(token, chatId) {
-  const todayRows = await getTodayRowsFromSheet();
-  const ethioToday = getEthiopianToday();
+  const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
 
   const submittedNames = new Set(
     todayRows.map((r) => (r[0] || "").trim().toLowerCase())
@@ -335,10 +350,10 @@ async function handleAbsent(token, chatId) {
     (s) => !submittedNames.has(s.name.trim().toLowerCase())
   );
 
-  let msg = `❌ *ዛሬ ያልተመዘገቡ ተማሪዎች — ${ethioToday}* (${absentList.length}/${STUDENTS.length})\n`;
+  let msg = `❌ *ያልተመዘገቡ ተማሪዎች — ${latestDate}* (${absentList.length}/${STUDENTS.length})\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   if (absentList.length === 0) {
-    msg += "🎉 ሁሉም ተማሪዎች ዛሬ ተመዝግበዋል!\n";
+    msg += "🎉 ሁሉም ተማሪዎች ተመዝግበዋል!\n";
   } else {
     absentList.forEach((s, i) => {
       const display = s.englishName
@@ -361,8 +376,7 @@ async function handleGroup(token, chatId, groupNum) {
   const group = GROUPS[num - 1];
   const groupStudents = STUDENTS.filter((s) => s.group === group);
 
-  const todayRows = await getTodayRowsFromSheet();
-  const ethioToday = getEthiopianToday();
+  const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
 
   const presentNames = new Set(
     todayRows
@@ -388,7 +402,7 @@ async function handleGroup(token, chatId, groupNum) {
   );
 
   let msg =
-    `📌 *${group} — ${ethioToday}*\n` +
+    `📌 *${group} — ${latestDate}*\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
     `✅ ተገኙ: ${present.length} | 📝 ፈቃድ: ${permission.length} | ❌ ቀሩ: ${absent.length}\n\n`;
 

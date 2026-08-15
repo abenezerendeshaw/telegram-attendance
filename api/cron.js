@@ -125,45 +125,63 @@ export default async function handler(req, res) {
   });
   const sheets = google.sheets({ version: "v4", auth });
 
-  try {
-    // Get current Ethiopian date using the EAT-offset date (UTC+3)
-    const now = new Date();
-    const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-    // Use the EAT date for Ethiopian date calculation (matches submit.js)
-    const ethioFormattedDate = getEthiopianDate(eatDate);
-
-    // ── Prefer the daily tab created by submit.js ────────────────────────────
-    // Check which tabs exist, then read from today's daily tab if present.
-    // Fall back to filtering Sheet1 if no daily tab was found.
+    // ── Prefer the latest daily tab created by submit.js ────────────────────
+    // Find the most recent daily tab (last non-Sheet1 tab) that actually has
+    // data. Fall back to the latest date found in Sheet1 if no daily tabs exist.
     let todaySubmissions = [];
+    let ethioFormattedDate = "";
 
     try {
       const meta = await sheets.spreadsheets.get({
         spreadsheetId: sheetId,
-        fields: "sheets(properties(title))",
+        fields: "sheets(properties(title,index))",
       });
-      const existingTabs = (meta.data.sheets || []).map((s) => s.properties.title);
+      const tabs = (meta.data.sheets || []).map((s) => s.properties.title);
+      const dateTabs = tabs.filter((t) => t !== "Sheet1" && t.trim().length > 0);
 
-      if (existingTabs.includes(ethioFormattedDate)) {
-        // Daily tab exists — read all rows from it (skip header row at index 0)
-        const dailyResponse = await sheets.spreadsheets.values.get({
-          spreadsheetId: sheetId,
-          range: `'${ethioFormattedDate}'!A:E`,
-        });
-        const dailyRows = dailyResponse.data.values || [];
-        // Row 0 is the header ("ሙሉ ስም", "ቡድን", "ሁኔታ", "ቀን", "ሰዓት") — skip it
-        todaySubmissions = dailyRows.length > 1 ? dailyRows.slice(1) : [];
-        console.log(`[Cron] Reading ${todaySubmissions.length} rows from daily tab: ${ethioFormattedDate}`);
-      } else {
-        // Fallback: filter master Sheet1 by date column
-        console.log(`[Cron] No daily tab found for "${ethioFormattedDate}", falling back to Sheet1 filter`);
+      if (dateTabs.length > 0) {
+        // Walk backwards from the last tab to find one with actual data
+        let foundTab = null;
+        for (let i = dateTabs.length - 1; i >= 0; i--) {
+          const dailyResponse = await sheets.spreadsheets.values.get({
+            spreadsheetId: sheetId,
+            range: `'${dateTabs[i]}'!A:E`,
+          });
+          const dailyRows = dailyResponse.data.values || [];
+          const dataRows = dailyRows.length > 1 ? dailyRows.slice(1) : [];
+          if (dataRows.length > 0) {
+            todaySubmissions = dataRows;
+            ethioFormattedDate = dateTabs[i];
+            foundTab = dateTabs[i];
+            console.log(`[Cron] Reading ${todaySubmissions.length} rows from latest daily tab: ${ethioFormattedDate}`);
+            break;
+          }
+        }
+        if (!foundTab) {
+          console.log("[Cron] All daily tabs are empty, falling back to Sheet1");
+        }
+      }
+
+      if (!ethioFormattedDate) {
+        // Fallback: find the latest date in Sheet1 by date column
+        console.log("[Cron] No daily tabs found, falling back to Sheet1 filter");
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId: sheetId,
           range: "Sheet1!A:E",
         });
-        const rows = response.data.values || [];
-        todaySubmissions = rows.filter((row) => row[3] === ethioFormattedDate);
-        console.log(`[Cron] Found ${todaySubmissions.length} rows in Sheet1 matching today`);
+        const allRows = response.data.values || [];
+        const dates = [...new Set(allRows.map((r) => r[3]).filter(Boolean))];
+        if (dates.length > 0) {
+          ethioFormattedDate = dates[dates.length - 1];
+          todaySubmissions = allRows.filter((row) => row[3] === ethioFormattedDate);
+          console.log(`[Cron] Found ${todaySubmissions.length} rows in Sheet1 for latest date: ${ethioFormattedDate}`);
+        } else {
+          // Absolute fallback — compute today's date
+          const now = new Date();
+          const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+          ethioFormattedDate = getEthiopianDate(eatDate);
+          console.log(`[Cron] Sheet1 has no dated rows, using today: ${ethioFormattedDate}`);
+        }
       }
     } catch (tabErr) {
       console.warn("[Cron] Tab lookup failed, falling back to Sheet1 filter:", tabErr.message);
@@ -171,8 +189,16 @@ export default async function handler(req, res) {
         spreadsheetId: sheetId,
         range: "Sheet1!A:E",
       });
-      const rows = response.data.values || [];
-      todaySubmissions = rows.filter((row) => row[3] === ethioFormattedDate);
+      const allRows = response.data.values || [];
+      const dates = [...new Set(allRows.map((r) => r[3]).filter(Boolean))];
+      if (dates.length > 0) {
+        ethioFormattedDate = dates[dates.length - 1];
+        todaySubmissions = allRows.filter((row) => row[3] === ethioFormattedDate);
+      } else {
+        const now = new Date();
+        const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+        ethioFormattedDate = getEthiopianDate(eatDate);
+      }
     }
 
     // Create lookup sets of submitted names (normalized)
@@ -214,10 +240,10 @@ export default async function handler(req, res) {
       process.env.TELEGRAM_TOPIC_PRESENT_TEST || process.env.TELEGRAM_TOPIC_PRESENT || "23",
       10
     );
-    let presentMessage = `📅 *የዛሬ ሙሉ የተገኙ ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
+    let presentMessage = `📅 *የቅርብ ቀን የተገኙ ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
     presentMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     if (presentsList.length === 0) {
-      presentMessage += `⚠️ ዛሬ የተገኘ ተማሪ የለም።\n`;
+      presentMessage += `⚠️ የተገኘ ተማሪ የለም።\n`;
     } else {
       presentsList.forEach((s, idx) => {
         const displayName = s.englishName ? `${s.name} (${s.englishName.trim()})` : s.name;
@@ -231,10 +257,10 @@ export default async function handler(req, res) {
       process.env.TELEGRAM_TOPIC_PERMISSION_SUMMARY || process.env.TELEGRAM_TOPIC_PERMISSION || "19",
       10
     );
-    let permissionMessage = `📅 *የዛሬ ፈቃድ የጠየቁ ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
+    let permissionMessage = `📅 *የቅርብ ቀን ፈቃድ የጠየቁ ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
     permissionMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     if (permissionsList.length === 0) {
-      permissionMessage += `✅ ዛሬ ፈቃድ የጠየቀ ተማሪ የለም።\n`;
+      permissionMessage += `✅ ፈቃድ የጠየቀ ተማሪ የለም።\n`;
     } else {
       permissionsList.forEach((s, idx) => {
         const displayName = s.englishName ? `${s.name} (${s.englishName.trim()})` : s.name;
@@ -245,10 +271,10 @@ export default async function handler(req, res) {
 
     // 3. Send Absent List -> Topic 96
     const absentTopic = parseInt(process.env.TELEGRAM_TOPIC_ABSENT || "96", 10);
-    let absentMessage = `📅 *የዛሬ የቀሩ (ያልተመዘገቡ) ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
+    let absentMessage = `📅 *የቅርብ ቀን የቀሩ (ያልተመዘገቡ) ተማሪዎች መዝገብ — ${ethioFormattedDate}*\n`;
     absentMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     if (absentsList.length === 0) {
-      absentMessage += `🎉 ዛሬ የቀረ ተማሪ የለም! ሁሉም ተመዝግበዋል።\n`;
+      absentMessage += `🎉 የቀረ ተማሪ የለም! ሁሉም ተመዝግበዋል።\n`;
     } else {
       absentsList.forEach((s, idx) => {
         const displayName = s.englishName ? `${s.name} (${s.englishName.trim()})` : s.name;
