@@ -425,12 +425,21 @@ async function handleStats(token, chatId) {
     return;
   }
 
-  const totalRows = rows.length;
-  const presentRows = rows.filter((r) => (r[2] || "").includes("ተገኝቷል")).length;
+  // Deduplicate by (normalizedName + date) — keeps last entry per student per day
+  // This prevents admin re-submissions from inflating totals
+  const seen = new Map();
+  for (const row of rows) {
+    const key = `${(row[0] || "").trim().toLowerCase()}__${(row[3] || "").trim()}`;
+    seen.set(key, row); // last write wins
+  }
+  const dedupedRows = Array.from(seen.values());
+
+  const totalRows = dedupedRows.length;
+  const presentRows = dedupedRows.filter((r) => (r[2] || "").includes("ተገኝቷል")).length;
   const permissionRows = totalRows - presentRows;
 
-  // Unique dates
-  const dates = new Set(rows.map((r) => r[3]).filter(Boolean));
+  // Unique class days
+  const dates = new Set(dedupedRows.map((r) => r[3]).filter(Boolean));
   const classDays = dates.size;
 
   // Per-group submission count
@@ -440,7 +449,7 @@ async function handleStats(token, chatId) {
     groupCounts[shortGroup] = { present: 0, permission: 0 };
   }
 
-  for (const row of rows) {
+  for (const row of dedupedRows) {
     const nameKey = (row[0] || "").trim().toLowerCase();
     const student = STUDENTS.find(
       (s) => s.name.trim().toLowerCase() === nameKey
@@ -637,6 +646,9 @@ export default async function handler(req, res) {
       await sendMessage(ADMIN_BOT_TOKEN, chatId, welcome);
     } else if (text.startsWith("/submit")) {
       // Open mini app in admin mode (no lock, no time/GPS restriction)
+      const appBaseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : "https://telegram-attendance-dzbz.vercel.app";
       await axios.post(`https://api.telegram.org/bot${ADMIN_BOT_TOKEN}/sendMessage`, {
         chat_id: chatId,
         text: "📝 *አቴንዳንስ ለመመዝገብ ከታች ይጫኑ:*\n_(የጊዜ እና GPS ገደብ የለም)_",
@@ -645,7 +657,7 @@ export default async function handler(req, res) {
           inline_keyboard: [[
             {
               text: "📝 አቴንዳንስ መዝግብ (Admin)",
-              web_app: { url: "https://telegram-attendance-dzbz.vercel.app/#admin" },
+              web_app: { url: `${appBaseUrl}/#admin` },
             },
           ]],
         },

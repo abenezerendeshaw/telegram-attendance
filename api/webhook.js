@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       const text = message.text;
       const firstName = message.from?.first_name || "ወዳጃችን";
 
-      if (text.startsWith("/start")) {
+      if (text.startsWith("/start") || text.startsWith("/help")) {
         const welcomeMessage = `
 ወደ *የበገና ትምህርት መገኘት መመዝገቢያ ቦት* እንኳን በደህና መጡ! 🎼
 
@@ -31,6 +31,23 @@ export default async function handler(req, res) {
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
           chat_id: chatId,
           text: welcomeMessage,
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "📝 መገኘት መዝግብ (Mark Attendance)",
+                  web_app: { url: WEB_APP_URL },
+                },
+              ],
+            ],
+          },
+        });
+      } else {
+        // Friendly fallback for any other message
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          chat_id: chatId,
+          text: `👋 ሰላም ${firstName}!\n\nመገኘትዎን ለመመዝገብ ከታች ያለውን ቁልፍ ይጫኑ። 👇`,
           parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [

@@ -167,8 +167,9 @@ export default async function handler(req, res) {
     }
 
     const now = new Date();
-    const ethioFormattedDate = getEthiopianDate(now);
     const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+    // Use the EAT-offset date for Ethiopian date (avoids midnight UTC mismatch)
+    const ethioFormattedDate = getEthiopianDate(eatDate);
     const eatHour = eatDate.getUTCHours();
     const eatMinute = eatDate.getUTCMinutes();
     const ethHour = ((eatHour - 6 + 24) % 12) || 12;
