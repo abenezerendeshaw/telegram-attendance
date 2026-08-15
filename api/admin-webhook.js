@@ -134,16 +134,17 @@ async function getLatestRowsFromSheet() {
     const dateTabs = tabs.filter((t) => t !== "Sheet1" && t.trim().length > 0);
 
     if (dateTabs.length > 0) {
-      // The last tab in the list is the most recent daily tab
-      const latestTab = dateTabs[dateTabs.length - 1];
-      const dailyResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId: sheetId,
-        range: `'${latestTab}'!A:E`,
-      });
-      const dailyRows = dailyResponse.data.values || [];
-      const rows = dailyRows.length > 1 ? dailyRows.slice(1) : [];
-      if (rows.length > 0) {
-        return { rows, date: latestTab };
+      // Walk backwards from the last tab to find one with actual data
+      for (let i = dateTabs.length - 1; i >= 0; i--) {
+        const dailyResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId: sheetId,
+          range: `'${dateTabs[i]}'!A:E`,
+        });
+        const dailyRows = dailyResponse.data.values || [];
+        const rows = dailyRows.length > 1 ? dailyRows.slice(1) : [];
+        if (rows.length > 0) {
+          return { rows, date: dateTabs[i] };
+        }
       }
     }
   } catch (_) {
