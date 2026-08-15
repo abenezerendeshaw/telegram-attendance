@@ -103,9 +103,45 @@ async function getAllRows() {
   return response.data.values || [];
 }
 
-function getTodayRows(rows) {
+// Returns today's Ethiopian date string using EAT (UTC+3)
+function getEthiopianToday() {
   const now = new Date();
-  const ethioToday = getEthiopianDate(now);
+  const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+  return getEthiopianDate(eatDate);
+}
+
+// Reads today's rows from the daily tab if it exists, falls back to Sheet1 filter
+async function getTodayRowsFromSheet() {
+  const sheets = await getSheetsClient();
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+  const ethioToday = getEthiopianToday();
+
+  try {
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId: sheetId,
+      fields: "sheets(properties(title))",
+    });
+    const existingTabs = (meta.data.sheets || []).map((s) => s.properties.title);
+
+    if (existingTabs.includes(ethioToday)) {
+      // Daily tab exists — read all rows, skip the header row
+      const dailyResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: `'${ethioToday}'!A:E`,
+      });
+      const dailyRows = dailyResponse.data.values || [];
+      return dailyRows.length > 1 ? dailyRows.slice(1) : [];
+    }
+  } catch (_) {
+    // fall through to Sheet1 filter
+  }
+
+  // Fallback: filter master Sheet1 by date column
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetId,
+    range: "Sheet1!A:E",
+  });
+  const rows = response.data.values || [];
   return rows.filter((row) => row[3] === ethioToday);
 }
 
@@ -160,10 +196,8 @@ async function handleHelp(token, chatId) {
 }
 
 async function handleToday(token, chatId) {
-  const rows = await getAllRows();
-  const todayRows = getTodayRows(rows);
-  const now = new Date();
-  const ethioToday = getEthiopianDate(now);
+  const todayRows = await getTodayRowsFromSheet();
+  const ethioToday = getEthiopianToday();
 
   const presentNames = new Set();
   const permissionNames = new Set();
@@ -217,9 +251,8 @@ async function handleToday(token, chatId) {
 }
 
 async function handlePresent(token, chatId) {
-  const rows = await getAllRows();
-  const todayRows = getTodayRows(rows);
-  const ethioToday = getEthiopianDate(new Date());
+  const todayRows = await getTodayRowsFromSheet();
+  const ethioToday = getEthiopianToday();
 
   const presentNames = new Set(
     todayRows
@@ -248,9 +281,8 @@ async function handlePresent(token, chatId) {
 }
 
 async function handlePermission(token, chatId) {
-  const rows = await getAllRows();
-  const todayRows = getTodayRows(rows);
-  const ethioToday = getEthiopianDate(new Date());
+  const todayRows = await getTodayRowsFromSheet();
+  const ethioToday = getEthiopianToday();
 
   const permRows = todayRows.filter(
     (r) => !(r[2] || "").includes("ተገኝቷል")
@@ -292,9 +324,8 @@ async function handlePermission(token, chatId) {
 }
 
 async function handleAbsent(token, chatId) {
-  const rows = await getAllRows();
-  const todayRows = getTodayRows(rows);
-  const ethioToday = getEthiopianDate(new Date());
+  const todayRows = await getTodayRowsFromSheet();
+  const ethioToday = getEthiopianToday();
 
   const submittedNames = new Set(
     todayRows.map((r) => (r[0] || "").trim().toLowerCase())
@@ -330,9 +361,8 @@ async function handleGroup(token, chatId, groupNum) {
   const group = GROUPS[num - 1];
   const groupStudents = STUDENTS.filter((s) => s.group === group);
 
-  const rows = await getAllRows();
-  const todayRows = getTodayRows(rows);
-  const ethioToday = getEthiopianDate(new Date());
+  const todayRows = await getTodayRowsFromSheet();
+  const ethioToday = getEthiopianToday();
 
   const presentNames = new Set(
     todayRows

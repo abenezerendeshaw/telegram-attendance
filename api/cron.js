@@ -126,19 +126,54 @@ export default async function handler(req, res) {
   const sheets = google.sheets({ version: "v4", auth });
 
   try {
-    // Get current Ethiopian date (matching UTC+3 eatDate)
+    // Get current Ethiopian date using the EAT-offset date (UTC+3)
     const now = new Date();
     const eatDate = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-    const ethioFormattedDate = getEthiopianDate(now);
+    // Use the EAT date for Ethiopian date calculation (matches submit.js)
+    const ethioFormattedDate = getEthiopianDate(eatDate);
 
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: "Sheet1!A:E",
-    });
+    // ── Prefer the daily tab created by submit.js ────────────────────────────
+    // Check which tabs exist, then read from today's daily tab if present.
+    // Fall back to filtering Sheet1 if no daily tab was found.
+    let todaySubmissions = [];
 
-    const rows = response.data.values || [];
-    // Filter rows matching today's Ethiopian date (column index 3)
-    const todaySubmissions = rows.filter((row) => row[3] === ethioFormattedDate);
+    try {
+      const meta = await sheets.spreadsheets.get({
+        spreadsheetId: sheetId,
+        fields: "sheets(properties(title))",
+      });
+      const existingTabs = (meta.data.sheets || []).map((s) => s.properties.title);
+
+      if (existingTabs.includes(ethioFormattedDate)) {
+        // Daily tab exists — read all rows from it (skip header row at index 0)
+        const dailyResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId: sheetId,
+          range: `'${ethioFormattedDate}'!A:E`,
+        });
+        const dailyRows = dailyResponse.data.values || [];
+        // Row 0 is the header ("ሙሉ ስም", "ቡድን", "ሁኔታ", "ቀን", "ሰዓት") — skip it
+        todaySubmissions = dailyRows.length > 1 ? dailyRows.slice(1) : [];
+        console.log(`[Cron] Reading ${todaySubmissions.length} rows from daily tab: ${ethioFormattedDate}`);
+      } else {
+        // Fallback: filter master Sheet1 by date column
+        console.log(`[Cron] No daily tab found for "${ethioFormattedDate}", falling back to Sheet1 filter`);
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId: sheetId,
+          range: "Sheet1!A:E",
+        });
+        const rows = response.data.values || [];
+        todaySubmissions = rows.filter((row) => row[3] === ethioFormattedDate);
+        console.log(`[Cron] Found ${todaySubmissions.length} rows in Sheet1 matching today`);
+      }
+    } catch (tabErr) {
+      console.warn("[Cron] Tab lookup failed, falling back to Sheet1 filter:", tabErr.message);
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: "Sheet1!A:E",
+      });
+      const rows = response.data.values || [];
+      todaySubmissions = rows.filter((row) => row[3] === ethioFormattedDate);
+    }
 
     // Create lookup sets of submitted names (normalized)
     const presentNames = new Set();
