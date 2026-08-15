@@ -110,6 +110,12 @@ function getEthiopianToday() {
   return getEthiopianDate(eatDate);
 }
 
+// Sheet stores names as "አማርኛ ስም (english name)" — strip the English part
+// so it matches s.name from students.js
+function normalizeName(rawName) {
+  return (rawName || "").replace(/\s*\(.*?\)\s*/g, "").trim().toLowerCase();
+}
+
 // Reads rows for the LATEST date that has data in the sheet.
 // Returns { rows, date } where date is the Ethiopian date string used.
 async function getLatestRowsFromSheet() {
@@ -221,7 +227,7 @@ async function handleToday(token, chatId) {
   const permissionNames = new Set();
 
   for (const row of todayRows) {
-    const name = (row[0] || "").trim().toLowerCase();
+    const name = normalizeName(row[0]);
     const status = (row[2] || "").trim();
     if (status.includes("ተገኝቷል")) {
       presentNames.add(name);
@@ -304,13 +310,13 @@ async function handlePermission(token, chatId) {
     (r) => !(r[2] || "").includes("ተገኝቷል")
   );
   const permNames = new Set(
-    permRows.map((r) => (r[0] || "").trim().toLowerCase())
+    permRows.map((r) => normalizeName(r[0]))
   );
 
   // Get reasons from sheet rows
   const reasonMap = {};
   for (const row of permRows) {
-    const key = (row[0] || "").trim().toLowerCase();
+    const key = normalizeName(row[0]);
     // Column E (index 4) is time — reason is stored in the Telegram message not the sheet
     // We can show the time at least
     reasonMap[key] = row[4] || "";
@@ -343,7 +349,7 @@ async function handleAbsent(token, chatId) {
   const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
 
   const submittedNames = new Set(
-    todayRows.map((r) => (r[0] || "").trim().toLowerCase())
+    todayRows.map((r) => normalizeName(r[0]))
   );
 
   const absentList = STUDENTS.filter(
@@ -381,12 +387,12 @@ async function handleGroup(token, chatId, groupNum) {
   const presentNames = new Set(
     todayRows
       .filter((r) => (r[2] || "").includes("ተገኝቷል"))
-      .map((r) => (r[0] || "").trim().toLowerCase())
+      .map((r) => normalizeName(r[0]))
   );
   const permissionNames = new Set(
     todayRows
       .filter((r) => !(r[2] || "").includes("ተገኝቷል"))
-      .map((r) => (r[0] || "").trim().toLowerCase())
+      .map((r) => normalizeName(r[0]))
   );
 
   const present = groupStudents.filter((s) =>
@@ -443,7 +449,7 @@ async function handleStats(token, chatId) {
   // This prevents admin re-submissions from inflating totals
   const seen = new Map();
   for (const row of rows) {
-    const key = `${(row[0] || "").trim().toLowerCase()}__${(row[3] || "").trim()}`;
+    const key = `${normalizeName(row[0])}__${(row[3] || "").trim()}`;
     seen.set(key, row); // last write wins
   }
   const dedupedRows = Array.from(seen.values());
@@ -464,7 +470,7 @@ async function handleStats(token, chatId) {
   }
 
   for (const row of dedupedRows) {
-    const nameKey = (row[0] || "").trim().toLowerCase();
+    const nameKey = normalizeName(row[0]);
     const student = STUDENTS.find(
       (s) => s.name.trim().toLowerCase() === nameKey
     );
@@ -520,7 +526,7 @@ async function handleSearch(token, chatId, query) {
   const studentName = student ? student.name.trim().toLowerCase() : normalizedQuery;
 
   const matches = rows.filter((r) =>
-    (r[0] || "").trim().toLowerCase().includes(studentName)
+    normalizeName(r[0]).includes(studentName)
   );
 
   if (matches.length === 0) {

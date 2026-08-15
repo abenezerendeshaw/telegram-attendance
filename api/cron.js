@@ -53,6 +53,12 @@ function getEthiopianDate(date = new Date()) {
   return `${dayOfWeek}፣ ${monthName} ${ethDay} ቀን ${ethYear} ዓ.ም`;
 }
 
+// Sheet stores names as "አማርኛ ስም (english name)" — strip the English part
+// so it matches s.name from students.js
+function normalizeName(rawName) {
+  return (rawName || "").replace(/\s*\(.*?\)\s*/g, "").trim().toLowerCase();
+}
+
 // Helper function to split and send long Telegram messages (under 4096-char limit)
 async function sendLongMessage(botToken, chatId, topicId, text) {
   const LIMIT = 4000;
@@ -206,9 +212,9 @@ export default async function handler(req, res) {
     const permissionNames = new Set();
 
     todaySubmissions.forEach((row) => {
-      const name = (row[0] || "").trim().toLowerCase();
+      const name = normalizeName(row[0]);
       const statusText = (row[2] || "").trim();
-      
+
       if (statusText.includes("ተገኝቷል")) {
         presentNames.add(name);
       } else {
