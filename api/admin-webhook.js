@@ -116,6 +116,52 @@ function normalizeName(rawName) {
   return (rawName || "").replace(/\s*\(.*?\)\s*/g, "").trim().toLowerCase();
 }
 
+async function getStudentRoster() {
+  const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+
+  if (!credentialsJson || !sheetId) {
+    return STUDENTS;
+  }
+
+  try {
+    const credentials = JSON.parse(credentialsJson);
+    if (credentials.private_key) {
+      credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+    }
+
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+    const sheets = google.sheets({ version: "v4", auth });
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: "Students!A:C",
+    });
+
+    const rows = response.data.values || [];
+    if (rows.length <= 1) {
+      return STUDENTS;
+    }
+
+    const roster = rows.slice(1).flatMap(([name, englishName = "", group = ""]) => {
+      const studentName = (name || "").trim();
+      if (!studentName) return [];
+      return [{
+        name: studentName,
+        englishName: (englishName || "").trim(),
+        group: (group || "").trim(),
+      }];
+    });
+
+    return roster.length > 0 ? roster : STUDENTS;
+  } catch (error) {
+    console.warn("[AdminBot] Failed to load Students sheet roster, falling back to src/students.js:", error.message);
+    return STUDENTS;
+  }
+}
+
 // Reads rows for the LATEST date that has data in the sheet.
 // Returns { rows, date } where date is the Ethiopian date string used.
 async function getLatestRowsFromSheet() {
@@ -223,6 +269,7 @@ async function handleHelp(token, chatId) {
 
 async function handleToday(token, chatId) {
   const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
+  const students = await getStudentRoster();
 
   const presentNames = new Set();
   const permissionNames = new Set();
@@ -237,19 +284,19 @@ async function handleToday(token, chatId) {
     }
   }
 
-  const presentList = STUDENTS.filter((s) =>
+  const presentList = students.filter((s) =>
     presentNames.has(s.name.trim().toLowerCase())
   );
-  const permissionList = STUDENTS.filter((s) =>
+  const permissionList = students.filter((s) =>
     permissionNames.has(s.name.trim().toLowerCase())
   );
-  const absentList = STUDENTS.filter(
+  const absentList = students.filter(
     (s) =>
       !presentNames.has(s.name.trim().toLowerCase()) &&
       !permissionNames.has(s.name.trim().toLowerCase())
   );
 
-  const total = STUDENTS.length;
+  const total = students.length;
 
   let msg =
     `📊 *የቅርብ ቀን ማጠቃለያ — ${latestDate}*\n` +
@@ -259,8 +306,8 @@ async function handleToday(token, chatId) {
     `❌ ቀሩ:  *${absentList.length}/${total}*\n\n`;
 
   // Per-group breakdown
-  for (const group of GROUPS) {
-    const gStudents = STUDENTS.filter((s) => s.group === group);
+  for (const group of [...new Set(students.map((s) => s.group))]) {
+    const gStudents = students.filter((s) => s.group === group);
     const gPresent = gStudents.filter((s) =>
       presentNames.has(s.name.trim().toLowerCase())
     ).length;
@@ -277,6 +324,7 @@ async function handleToday(token, chatId) {
 
 async function handlePresent(token, chatId) {
   const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
+  const students = await getStudentRoster();
 
   const presentNames = new Set(
     todayRows
@@ -284,7 +332,7 @@ async function handlePresent(token, chatId) {
       .map((r) => (r[0] || "").trim().toLowerCase())
   );
 
-  const presentList = STUDENTS.filter((s) =>
+  const presentList = students.filter((s) =>
     presentNames.has(s.name.trim().toLowerCase())
   );
 
@@ -306,6 +354,7 @@ async function handlePresent(token, chatId) {
 
 async function handlePermission(token, chatId) {
   const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
+  const students = await getStudentRoster();
 
   const permRows = todayRows.filter(
     (r) => !(r[2] || "").includes("ተገኝቷል")
@@ -323,7 +372,7 @@ async function handlePermission(token, chatId) {
     reasonMap[key] = row[4] || "";
   }
 
-  const permList = STUDENTS.filter((s) =>
+  const permList = students.filter((s) =>
     permNames.has(s.name.trim().toLowerCase())
   );
 
@@ -348,16 +397,17 @@ async function handlePermission(token, chatId) {
 
 async function handleAbsent(token, chatId) {
   const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
+  const students = await getStudentRoster();
 
   const submittedNames = new Set(
     todayRows.map((r) => normalizeName(r[0]))
   );
 
-  const absentList = STUDENTS.filter(
+  const absentList = students.filter(
     (s) => !submittedNames.has(s.name.trim().toLowerCase())
   );
 
-  let msg = `❌ *ያልተመዘገቡ ተማሪዎች — ${latestDate}* (${absentList.length}/${STUDENTS.length})\n`;
+  let msg = `❌ *ያልተመዘገቡ ተማሪዎች — ${latestDate}* (${absentList.length}/${students.length})\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   if (absentList.length === 0) {
     msg += "🎉 ሁሉም ተማሪዎች ተመዝግበዋል!\n";
@@ -374,14 +424,16 @@ async function handleAbsent(token, chatId) {
 }
 
 async function handleGroup(token, chatId, groupNum) {
+  const students = await getStudentRoster();
+  const groupNames = [...new Set(students.map((s) => s.group).filter(Boolean))];
   const num = parseInt(groupNum, 10);
-  if (isNaN(num) || num < 1 || num > 4) {
-    await sendMessage(token, chatId, "❌ ትክክለኛ ቡድን ቁጥር ያስገቡ (1-4)። ምሳሌ: /group 2");
+  if (isNaN(num) || num < 1 || num > groupNames.length) {
+    await sendMessage(token, chatId, `❌ ትክክለኛ ቡድን ቁጥር ያስገቡ (1-${groupNames.length})። ምሳሌ: /group 2`);
     return;
   }
 
-  const group = GROUPS[num - 1];
-  const groupStudents = STUDENTS.filter((s) => s.group === group);
+  const group = groupNames[num - 1];
+  const groupStudents = students.filter((s) => s.group === group);
 
   const { rows: todayRows, date: latestDate } = await getLatestRowsFromSheet();
 
@@ -441,6 +493,7 @@ async function handleGroup(token, chatId, groupNum) {
 
 async function handleStats(token, chatId) {
   const rows = await getAllRows();
+  const students = await getStudentRoster();
   if (rows.length === 0) {
     await sendMessage(token, chatId, "📊 ምንም መዝገብ አልተገኘም።");
     return;
@@ -472,7 +525,7 @@ async function handleStats(token, chatId) {
 
   for (const row of dedupedRows) {
     const nameKey = normalizeName(row[0]);
-    const student = STUDENTS.find(
+    const student = students.find(
       (s) => s.name.trim().toLowerCase() === nameKey
     );
     if (student) {
@@ -514,10 +567,11 @@ async function handleSearch(token, chatId, query) {
   }
 
   const rows = await getAllRows();
+  const students = await getStudentRoster();
   const normalizedQuery = query.trim().toLowerCase();
 
   // Match by Amharic or English name
-  const student = STUDENTS.find(
+  const student = students.find(
     (s) =>
       s.name.trim().toLowerCase().includes(normalizedQuery) ||
       (s.englishName &&

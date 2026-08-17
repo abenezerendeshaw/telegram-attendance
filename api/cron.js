@@ -59,6 +59,53 @@ function normalizeName(rawName) {
   return (rawName || "").replace(/\s*\(.*?\)\s*/g, "").trim().toLowerCase();
 }
 
+async function getStudentRoster() {
+  const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+
+  if (!credentialsJson || !sheetId) {
+    return STUDENTS;
+  }
+
+  try {
+    const credentials = JSON.parse(credentialsJson);
+    if (credentials.private_key) {
+      credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+    }
+
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+    const sheets = google.sheets({ version: "v4", auth });
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: "Students!A:C",
+    });
+
+    const rows = response.data.values || [];
+    if (rows.length <= 1) {
+      return STUDENTS;
+    }
+
+    const roster = rows.slice(1).flatMap(([name, englishName = "", group = ""]) => {
+      const studentName = (name || "").trim();
+      if (!studentName) return [];
+      return [{
+        name: studentName,
+        englishName: (englishName || "").trim(),
+        group: (group || "").trim(),
+      }];
+    });
+
+    return roster.length > 0 ? roster : STUDENTS;
+  } catch (error) {
+    console.warn("[Cron] Failed to load Students sheet roster, falling back to src/students.js:", error.message);
+    return STUDENTS;
+  }
+}
+
 // Helper function to split and send long Telegram messages (under 4096-char limit)
 async function sendLongMessage(botToken, chatId, topicId, text) {
   const LIMIT = 4000;
@@ -207,6 +254,8 @@ export default async function handler(req, res) {
       }
     }
 
+    const students = await getStudentRoster();
+
     // Create lookup sets of submitted names (normalized)
     const presentNames = new Set();
     const permissionNames = new Set();
@@ -227,7 +276,7 @@ export default async function handler(req, res) {
     const permissionsList = [];
     const absentsList = [];
 
-    STUDENTS.forEach((student) => {
+    students.forEach((student) => {
       const normalizedStudentName = student.name.trim().toLowerCase();
       if (presentNames.has(normalizedStudentName)) {
         presentsList.push(student);
