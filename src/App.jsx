@@ -62,6 +62,22 @@ export default function App() {
     return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, []);
 
+  // On first client load, call the init endpoint once to ensure Sheets tabs exist.
+  useEffect(() => {
+    const initFlag = localStorage.getItem("tg_attendance_init_done");
+    if (initFlag) return;
+    const doInit = async () => {
+      try {
+        await axios.post("/api/init");
+        localStorage.setItem("tg_attendance_init_done", "1");
+        console.log("Init endpoint called successfully");
+      } catch (e) {
+        console.warn("Init endpoint failed or not configured:", e?.response?.data || e.message);
+      }
+    };
+    doInit();
+  }, []);
+
   const filteredStudents = STUDENTS.filter((s) => {
     const query = searchTerm.toLowerCase().trim();
     if (!query) return true;

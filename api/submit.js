@@ -98,6 +98,37 @@ async function appendToSheet({ fullName, group, status, date, time }) {
 
   const sheets = google.sheets({ version: "v4", auth });
 
+  // Ensure a dedicated `Students` tab exists and is populated with the canonical
+  // roster from `src/students.js`. We overwrite the tab contents so the sheet
+  // always matches the code roster used for comparisons.
+  try {
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId: sheetId,
+      fields: "sheets(properties(title))",
+    });
+    const existingTabs = (meta.data.sheets || []).map((s) => s.properties.title);
+
+    if (!existingTabs.includes("Students")) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sheetId,
+        requestBody: { requests: [{ addSheet: { properties: { title: "Students" } } }] },
+      });
+      console.log("[Sheets] Created Students tab");
+    }
+
+    const rows = STUDENTS.map((s) => [s.name || "", s.englishName || "", s.group || ""]);
+    const payload = { values: [["name", "englishName", "group"], ...rows] };
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: sheetId,
+      range: "Students!A1",
+      valueInputOption: "USER_ENTERED",
+      requestBody: payload,
+    });
+    console.log("[Sheets] Students tab populated from src/students.js");
+  } catch (e) {
+    console.error("[Sheets] Failed to ensure Students tab:", e.message, e.response?.data || "");
+  }
+
   const statusText = status === "present"
     ? "ተገኝቷል / ተገኝታለች"
     : "ፈቃድ ጠይቋል / ጠይቃለች";
@@ -156,6 +187,73 @@ async function appendToSheet({ fullName, group, status, date, time }) {
       requestBody: { values: [[fullName, group, statusText, date, time]] },
     });
     console.log(`[Sheets] Row appended to daily tab: ${dailyTabName}`);
+    // ── Update `Students` tab by adding a date column (if needed)
+    // and marking the student's row with a check/cross. This keeps Sheet1
+    // as the append-only log and uses Students for roster-style marks.
+    try {
+      const headerResp = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: "Students!1:1",
+      });
+      const headers = (headerResp.data.values && headerResp.data.values[0]) || [];
+
+      // Date columns start after name, englishName, group (A-C => indexes 0-2)
+      const existingIndex = headers.findIndex((h) => (h || "").toString().trim() === dailyTabName);
+      const newColIndexZeroBased = existingIndex !== -1 ? existingIndex : Math.max(headers.length, 3);
+
+      function colNumberToLetter(n) {
+        let s = "";
+        while (n > 0) {
+          const m = (n - 1) % 26;
+          s = String.fromCharCode(65 + m) + s;
+          n = Math.floor((n - 1) / 26);
+        }
+        return s;
+      }
+
+      const targetColNumber = newColIndexZeroBased + 1; // 1-based
+      const targetColLetter = colNumberToLetter(targetColNumber);
+
+      if (existingIndex === -1) {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: sheetId,
+          range: `Students!${targetColLetter}1`,
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: [[dailyTabName]] },
+        });
+      }
+
+      // Find student's row in Students column A
+      const colAResp = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: "Students!A:A",
+      });
+      const colA = colAResp.data.values || [];
+      const searchName = (fullName || "").toString().replace(/\s*\(.*?\)\s*/g, "").trim().toLowerCase();
+      let foundRow = -1;
+      for (let i = 0; i < colA.length; i++) {
+        const cell = (colA[i] && colA[i][0]) ? colA[i][0].toString().replace(/\s*\(.*?\)\s*/g, "").trim().toLowerCase() : "";
+        if (cell === searchName) {
+          foundRow = i + 1; // 1-based
+          break;
+        }
+      }
+
+      if (foundRow !== -1) {
+        const mark = status === "present" ? "✔" : "✖";
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: sheetId,
+          range: `Students!${targetColLetter}${foundRow}`,
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: [[mark]] },
+        });
+        console.log(`[Sheets] Marked ${fullName} as ${mark} in Students column ${dailyTabName}`);
+      } else {
+        console.log(`[Sheets] Student ${fullName} not found in Students tab; skipping mark.`);
+      }
+    } catch (e) {
+      console.error("[Sheets] Failed to update Students date column:", e.message, e.response?.data || "");
+    }
   } catch (e) {
     console.error("[Sheets] Failed to append to daily tab:", e.message, e.response?.data || "");
     // Don't rethrow — daily tab failure should not block the main response
