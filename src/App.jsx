@@ -1,7 +1,13 @@
 // src/App.jsx
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { STUDENTS } from "./students";
+
+// Base API URL for the PHP Backend
+const API_BASE = "https://specificethiopian.com/evaluation/api";
+
+// Get company slug from URL (?c=slug)
+const urlParams = new URLSearchParams(window.location.search);
+const companySlug = urlParams.get('c') || '';
 
 export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -11,6 +17,11 @@ export default function App() {
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
+  
+  // Multi-tenant state
+  const [studentsList, setStudentsList] = useState([]);
+  const [config, setConfig] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // 24-hour Lock State
   const [isLocked, setIsLocked] = useState(false);
@@ -62,23 +73,31 @@ export default function App() {
     return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, []);
 
-  // On first client load, call the init endpoint once to ensure Sheets tabs exist.
+  // Fetch configuration and members
   useEffect(() => {
-    const initFlag = localStorage.getItem("tg_attendance_init_done");
-    if (initFlag) return;
-    const doInit = async () => {
+    if (!companySlug) {
+      setIsInitializing(false);
+      return;
+    }
+
+    const loadData = async () => {
       try {
-        await axios.post("/api/init");
-        localStorage.setItem("tg_attendance_init_done", "1");
-        console.log("Init endpoint called successfully");
+        const [confRes, memRes] = await Promise.all([
+          axios.get(`${API_BASE}/config.php?c=${companySlug}`),
+          axios.get(`${API_BASE}/members.php?c=${companySlug}`)
+        ]);
+        setConfig(confRes.data);
+        setStudentsList(memRes.data.members || []);
       } catch (e) {
-        console.warn("Init endpoint failed or not configured:", e?.response?.data || e.message);
+        console.error("Failed to load company data:", e);
+      } finally {
+        setIsInitializing(false);
       }
     };
-    doInit();
+    loadData();
   }, []);
 
-  const filteredStudents = STUDENTS.filter((s) => {
+  const filteredStudents = studentsList.filter((s) => {
     const query = searchTerm.toLowerCase().trim();
     if (!query) return true;
     const matchesAmharic = s.name.includes(query);
@@ -150,7 +169,7 @@ export default function App() {
     }
 
     try {
-      await axios.post("/api/submit", {
+      await axios.post(`${API_BASE}/submit.php?c=${companySlug}`, {
         fullName: selectedStudent.name,
         group: selectedStudent.group,
         status: attendanceStatus,
@@ -250,7 +269,7 @@ export default function App() {
     setReceiptLoading(true);
     setReceiptStatusMsg({ type: "", message: "" });
     try {
-      await axios.post("/api/receipt", {
+      await axios.post(`${API_BASE}/receipt.php?c=${companySlug}`, {
         payerName: receiptPayerName,
         studentName: receiptStudentName,
         imageData: receiptImageData,
@@ -270,32 +289,54 @@ export default function App() {
     }
   };
 
+  if (isInitializing) {
+    return <div style={{...styles.container, color: '#fff'}}>Loading...</div>;
+  }
+
+  if (!companySlug || !config) {
+    return (
+      <div style={styles.container}>
+        <div style={{...styles.card, padding: 30, textAlign: 'center'}}>
+          <h2>Invalid Link</h2>
+          <p>This attendance link is incomplete or the organization was not found.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <img src="/begena.png" alt="በገና (Begena)" style={styles.topImage} />
+        {config.cover ? (
+          <img src={config.cover} alt="Cover" style={styles.topImage} />
+        ) : (
+          <div style={{...styles.topImage, backgroundColor: config.primaryColor || '#d97706'}}></div>
+        )}
 
         <div style={styles.content}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-            <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝግብ</h1>
+            {config.logo && <img src={config.logo} alt="Logo" style={{width:40, height:40, borderRadius:8}} />}
+            <h1 style={styles.title}>{config.name}</h1>
           </div>
-          <p style={styles.subtitle}>ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።</p>
+          <p style={styles.subtitle}>{config.description || "ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።"}</p>
 
           <div style={styles.choiceRow}>
             <button
-              style={{ ...styles.choiceButton, ...(mode === "attendance" ? styles.choiceActive : {}) }}
+              style={{ ...styles.choiceButton, ...(mode === "attendance" ? {backgroundColor: config.primaryColor || '#d97706', borderColor: 'transparent'} : {}) }}
               onClick={() => setMode("attendance")}
             >
               <svg style={styles.iconSmall} viewBox="0 0 19 19"><use href="/icons.svg#github-icon" /></svg>
               Attendance
             </button>
-            <button
-              style={{ ...styles.choiceButton, ...(mode === "receipt" ? styles.choiceActive : {}) }}
-              onClick={() => setMode("receipt")}
-            >
-              <svg style={styles.iconSmall} viewBox="0 0 16 17"><use href="/icons.svg#bluesky-icon" /></svg>
-              Upload Receipt
-            </button>
+            {config.receiptUploadEnabled && (
+              <button
+                style={{ ...styles.choiceButton, ...(mode === "receipt" ? {backgroundColor: config.primaryColor || '#d97706', borderColor: 'transparent'} : {}) }}
+                onClick={() => setMode("receipt")}
+              >
+                <svg style={styles.iconSmall} viewBox="0 0 16 17"><use href="/icons.svg#bluesky-icon" /></svg>
+                Upload Receipt
+              </button>
+            )}
           </div>
 
           {mode === "attendance" && (
@@ -391,7 +432,7 @@ export default function App() {
                 </p>
               )}
 
-              <button type="submit" disabled={loading} style={styles.button}>
+              <button type="submit" disabled={loading} style={{...styles.button, backgroundColor: config.primaryColor || '#d97706'}}>
                 {loading ? "በመመዝገብ ላይ..." : "መረጃውን መዝግብ"}
               </button>
             </form>
