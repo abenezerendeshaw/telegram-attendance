@@ -136,7 +136,8 @@ export default function App() {
     setStatus({ type: "", message: "" });
 
     let coords = {};
-    if (attendanceStatus === "present") {
+    const gpsDisabled = config?.disableGpsCheck;
+    if (attendanceStatus === "present" && !gpsDisabled) {
       if (!navigator.geolocation) {
         setStatus({
           type: "error",

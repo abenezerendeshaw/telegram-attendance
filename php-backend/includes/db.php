@@ -4,8 +4,8 @@
 
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'specifyu_attendance_hub');   // your cPanel DB name
-define('DB_USER', 'specifyu_abenu');              // your cPanel DB username
-define('DB_PASS', '90100349300@Abeni');                  // your cPanel DB password
+define('DB_USER', 'root');              // your cPanel DB username
+define('DB_PASS', '');                  // your cPanel DB password
 define('DB_CHARSET', 'utf8mb4');
 
 // ── PDO Singleton ─────────────────────────────────────────────────────────
