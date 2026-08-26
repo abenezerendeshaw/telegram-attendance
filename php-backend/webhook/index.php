@@ -52,7 +52,7 @@ echo 'ok';
 
 // ── Student Bot Commands ──────────────────────────────────────────────────
 function handle_student_command(string $token, $chatId, string $text, string $firstName, array $company): void {
-    $appUrl = "https://telegram-attendance-dzbz.vercel.app/?c={$company['slug']}";
+    $appUrl = "https://global-attendace.vercel.app/?c={$company['slug']}";
     $name   = $company['name'];
 
     if (str_starts_with($text, '/start') || str_starts_with($text, '/help')) {
@@ -116,7 +116,7 @@ function handle_admin_command(string $token, $chatId, string $text, string $firs
             cmd_announce($token, $chatId, $company, $msg);
             break;
         case '/submit':
-            $appUrl = "https://telegram-attendance-dzbz.vercel.app/?c={$company['slug']}#admin";
+            $appUrl = "https://global-attendace.vercel.app/?c={$company['slug']}#admin";
             tg_send($token, 'sendMessage', [
                 'chat_id'      => $chatId,
                 'text'         => "📝 *አቴንዳንስ ለመመዝገብ (Admin Mode — ምንም ገደብ የለም):*",
@@ -203,7 +203,7 @@ function cmd_present(string $token, $chatId, array $company): void {
     $count = count($presentRows);
     $msg   = "✅ *ተገኙ — {$ethDate}* ({$count})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     if ($count === 0) { $msg .= "⚠️ ማንም አልተገኘም።"; }
-    else { $i=1; foreach ($presentRows as $r) $msg .= "{$i++}. {$r['member_name']} — {$r['group_name']}\n"; }
+    else { $i = 1; foreach ($presentRows as $r) { $msg .= ($i++) . ". {$r['member_name']} — {$r['group_name']}\n"; } }
     tg_message($token, $chatId, $msg);
 }
 
@@ -213,7 +213,7 @@ function cmd_permission(string $token, $chatId, array $company): void {
     $count = count($permRows);
     $msg   = "📝 *ፈቃድ — {$ethDate}* ({$count})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     if ($count === 0) { $msg .= "✅ ፈቃድ የጠየቀ የለም።"; }
-    else { $i=1; foreach ($permRows as $r) { $msg .= "{$i++}. {$r['member_name']} — {$r['group_name']}"; if ($r['reason']) $msg .= " | {$r['reason']}"; $msg .= "\n"; } }
+    else { $i=1; foreach ($permRows as $r) { $msg .= ($i++) . ". {$r['member_name']} — {$r['group_name']}"; if ($r['reason']) $msg .= " | {$r['reason']}"; $msg .= "\n"; } }
     tg_message($token, $chatId, $msg);
 }
 
@@ -232,7 +232,7 @@ function cmd_absent(string $token, $chatId, array $company): void {
     $total = count($members); $aCount = count($absent);
     $msg   = "❌ *ያልተገኙ — {$ethDate}* ({$aCount}/{$total})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     if ($aCount === 0) { $msg .= "🎉 ሁሉም ተመዝግበዋል!"; }
-    else { $i=1; foreach ($absent as $m) { $n = $m['english_name'] ? "{$m['name']} ({$m['english_name']})" : $m['name']; $msg .= "{$i++}. {$n} — {$m['group_name']}\n"; } }
+    else { $i=1; foreach ($absent as $m) { $n = $m['english_name'] ? "{$m['name']} ({$m['english_name']})" : $m['name']; $msg .= ($i++) . ". {$n} — {$m['group_name']}\n"; } }
     tg_message($token, $chatId, $msg);
 }
 

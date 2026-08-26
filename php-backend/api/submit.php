@@ -138,26 +138,35 @@ $botToken = $company['telegram_bot_token'] ?? '';
 $chatId   = $company['telegram_chat_id']   ?? '';
 
 if ($botToken && $chatId) {
-    $msg = "🎼 *{$company['name']} — መገኘት መዝገብ*\n\n"
-         . "👤 *ሙሉ ስም:*\u{2001}{$displayName}\n"
-         . "📍 *ቡድን:*\u{2001}\u{2001}{$groupText}\n"
-         . "📊 *ሁኔታ:*\u{2001}\u{2001}{$statusTxt}\n"
-         . "📅 *ቀን:*\u{2001}\u{2001}\u{2001}{$ethDate}\n"
-         . "⏰ *ሰዓት:*\u{2001}\u{2001}{$ethTime}";
+    $caption = "🎼 *{$company['name']} — መገኘት መዝገብ*\n\n"
+             . "👤 *ሙሉ ስም:*\u{2001}{$displayName}\n"
+             . "📍 *ቡድን:*\u{2001}\u{2001}{$groupText}\n"
+             . "📊 *ሁኔታ:*\u{2001}\u{2001}{$statusTxt}\n"
+             . "📅 *ቀን:*\u{2001}\u{2001}\u{2001}{$ethDate}\n"
+             . "⏰ *ሰዓት:*\u{2001}\u{2001}{$ethTime}";
     if ($status === 'permission' && $reason) {
-        $msg .= "\n📝 *ምክንያት:*\u{2001}{$reason}";
+        $caption .= "\n📝 *ምክንያት:*\u{2001}{$reason}";
     }
 
-    $payload = ['chat_id' => $chatId, 'text' => $msg, 'parse_mode' => 'Markdown'];
+    $logoUrl = $company['logo_path']
+        ? 'https://specificethiopian.com/uploads/logos/' . basename($company['logo_path'])
+        : BASE_URL . '/assets/img/register-panel.jpg';
+
+    $photoPayload = [
+        'chat_id'    => $chatId,
+        'photo'      => $logoUrl,
+        'caption'    => $caption,
+        'parse_mode' => 'Markdown',
+    ];
 
     // Topic-specific thread
     if ($status === 'present' && $company['telegram_topic_present']) {
-        $payload['message_thread_id'] = (int)$company['telegram_topic_present'];
+        $photoPayload['message_thread_id'] = (int)$company['telegram_topic_present'];
     } elseif ($status === 'permission' && $company['telegram_topic_permission']) {
-        $payload['message_thread_id'] = (int)$company['telegram_topic_permission'];
+        $photoPayload['message_thread_id'] = (int)$company['telegram_topic_permission'];
     }
 
-    tg_send($botToken, 'sendMessage', $payload);
+    tg_send($botToken, 'sendPhoto', $photoPayload);
 }
 
 // ── Append to Google Sheets (optional) ───────────────────────────────────

@@ -49,7 +49,7 @@ if (is_post()) {
 
                 $db->prepare(
                     'INSERT INTO company_settings (company_id, cron_secret, webapp_url) VALUES (?, ?, ?)'
-                )->execute([$cid, $cronSec, 'https://telegram-attendance-dzbz.vercel.app/?c=' . $slug]);
+                )->execute([$cid, $cronSec, 'https://global-attendace.vercel.app/?c=' . $slug]);
 
                 $db->commit();
                 $_SESSION['company_id']   = $cid;

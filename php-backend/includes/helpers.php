@@ -33,6 +33,7 @@ function unique_slug(string $base): string {
 // Set CORS headers for API endpoints (allow Vercel frontend)
 function set_cors(): void {
     $allowed = [
+        'https://global-attendace.vercel.app',
         'https://telegram-attendance-dzbz.vercel.app',
         'https://specificethiopian.com',
         'http://localhost:5173',

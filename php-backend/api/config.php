@@ -13,15 +13,17 @@ if (!$slug) json_out(['error' => 'Missing company slug (c)'], 400);
 $company = get_company_by_slug($slug);
 if (!$company) json_out(['error' => 'Company not found'], 404);
 
+$defaultLogo = BASE_URL . '/assets/img/register-panel.jpg';
+
 json_out([
     'name'                    => $company['name'],
     'slug'                    => $company['slug'],
     'logo'                    => $company['logo_path']
                                  ? 'https://specificethiopian.com/uploads/logos/' . basename($company['logo_path'])
-                                 : null,
+                                 : $defaultLogo,
     'cover'                   => $company['cover_image']
                                  ? 'https://specificethiopian.com/uploads/covers/' . basename($company['cover_image'])
-                                 : null,
+                                 : $defaultLogo,
     'description'             => $company['description'],
     'primaryColor'            => $company['primary_color'] ?? '#d97706',
     'memberType'              => $company['member_type'] ?? 'student',
