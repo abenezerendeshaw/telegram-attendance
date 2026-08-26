@@ -397,7 +397,7 @@ export default function App() {
               {selectedStudent && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 16 }}>
                   <div style={styles.groupBadge}>📍 <strong>ቡድን:</strong> {selectedStudent.group}</div>
-                  {selectedStudent.branch && <div style={styles.branchBadge}>🏢 <strong>ቅርንጫፍ:</strong> {selectedStudent.branch}</div>}
+                  {selectedStudent.branch && <div style={styles.branchBadge}>🏢 <strong>ዘርፍ/ምድብ:</strong> {selectedStudent.branch}</div>}
                   {selectedStudent.level && <div style={styles.levelBadge}>🎓 <strong>ደረጃ:</strong> {selectedStudent.level}</div>}
                 </div>
               )}
