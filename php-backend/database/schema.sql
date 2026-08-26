@@ -12,7 +12,7 @@ CREATE TABLE companies (
   cover_image    VARCHAR(500) DEFAULT NULL,
   description    TEXT         DEFAULT NULL,
   primary_color  VARCHAR(7)   DEFAULT '#d97706',
-  member_type    ENUM('student','employee') DEFAULT 'student',
+  member_type    ENUM('student','employee','both') DEFAULT 'student',
   plan           ENUM('free','pro')         DEFAULT 'free',
   is_active      TINYINT(1)   DEFAULT 1,
   created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
@@ -21,7 +21,8 @@ CREATE TABLE companies (
 -- ⚠️  If upgrading an EXISTING database, run this instead of re-importing:
 -- ALTER TABLE companies
 --   ADD COLUMN username VARCHAR(100) UNIQUE AFTER slug,
---   MODIFY COLUMN email VARCHAR(255) DEFAULT NULL;
+--   MODIFY COLUMN email VARCHAR(255) DEFAULT NULL,
+--   MODIFY COLUMN member_type ENUM('student','employee','both') DEFAULT 'student';
 
 -- ── Company Settings ─────────────────────────────────────────
 CREATE TABLE company_settings (

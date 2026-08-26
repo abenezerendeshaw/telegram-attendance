@@ -63,7 +63,7 @@ include __DIR__ . '/_header.php';
     <div class="stat-card blue">
       <span class="stat-icon">👥</span>
       <div class="stat-value"><?= $totalMembers ?></div>
-      <div class="stat-label">Total <?= e($company['member_type']) ?>s<br>ጠቅላላ ተማሪዎች</div>
+      <div class="stat-label">Total <?= e(member_type_label($company['member_type'] ?? 'student', true)) ?><br>ጠቅላላ አባላት</div>
     </div>
     <div class="stat-card green">
       <span class="stat-icon">✅</span>

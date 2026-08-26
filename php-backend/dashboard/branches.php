@@ -81,7 +81,7 @@ include __DIR__ . '/_header.php';
   <div class="card-header">
     <div>
       <h2 class="card-title">Branches & Levels</h2>
-      <p class="card-subtitle">Organize your <?= e($company['member_type']) ?>s into multiple branches (locations) and levels (grades/sections).</p>
+      <p class="card-subtitle">Organize your <?= e(member_type_label($company['member_type'] ?? 'student', true)) ?> into multiple branches (locations) and levels (grades/sections).</p>
     </div>
   </div>
 

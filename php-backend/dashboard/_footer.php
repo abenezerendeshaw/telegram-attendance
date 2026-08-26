@@ -1,5 +1,5 @@
   </main>
 </div>
-<script src="/assets/js/dashboard.js"></script>
+<script src="<?= BASE_PATH ?>/assets/js/dashboard.js"></script>
 </body>
 </html>

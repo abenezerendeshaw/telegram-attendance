@@ -93,6 +93,26 @@ function e(string $str): string {
     return htmlspecialchars($str, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 }
 
+// Human-readable label for a company's member type
+function member_type_label(string $type, bool $plural = false): string {
+    return match ($type) {
+        'employee' => $plural ? 'Employees' : 'Employee',
+        'both'     => $plural ? 'Students & Employees' : 'Students & Employees',
+        default    => $plural ? 'Students' : 'Student',
+    };
+}
+
+// Resolve a comma/checkbox member type value to a single valid value
+function resolve_member_type(array $selected): string {
+    $types = [];
+    foreach ($selected as $t) {
+        if (in_array($t, ['student', 'employee'], true)) $types[$t] = true;
+    }
+    $count = count($types);
+    if ($count >= 2) return 'both';
+    return $types['employee'] ?? 'student';
+}
+
 // Format bytes to human-readable
 function format_bytes(int $bytes): string {
     if ($bytes >= 1048576) return round($bytes / 1048576, 1) . ' MB';

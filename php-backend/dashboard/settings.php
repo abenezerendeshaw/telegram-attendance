@@ -10,7 +10,7 @@ if (is_post()) {
     $name        = trim($_POST['name'] ?? '');
     $description = trim($_POST['description'] ?? '');
     $color       = trim($_POST['primary_color'] ?? '#d97706');
-    $mType       = in_array($_POST['member_type'] ?? '', ['student','employee']) ? $_POST['member_type'] : 'student';
+    $mType       = resolve_member_type($_POST['member_types'] ?? []);
 
     $logoPath  = $company['logo_path'];
     $coverPath = $company['cover_image'];
@@ -120,11 +120,19 @@ include __DIR__ . '/_header.php';
         </div>
         
         <div class="form-group">
-          <label class="form-label">Terminology (Students / Employees)</label>
-          <select class="form-select" name="member_type">
-            <option value="student" <?= $company['member_type'] === 'student' ? 'selected' : '' ?>>Students (ተማሪዎች)</option>
-            <option value="employee" <?= $company['member_type'] === 'employee' ? 'selected' : '' ?>>Employees (ሰራተኞች)</option>
-          </select>
+          <label class="form-label">Member Type (can select both)</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
+              <input type="checkbox" name="member_types[]" value="student" style="accent-color:var(--accent)"
+                <?= in_array('student', [$company['member_type']]) ? 'checked' : '' ?>>
+              🎓 Students / ተማሪዎች
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
+              <input type="checkbox" name="member_types[]" value="employee" style="accent-color:var(--accent)"
+                <?= in_array('employee', [$company['member_type']]) ? 'checked' : '' ?>>
+              👔 Employees / ሰራተኞች
+            </label>
+          </div>
         </div>
       </div>
 

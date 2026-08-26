@@ -29,37 +29,53 @@ if (is_post()) {
 <title>Sign In — Specific Ethiopian Attendance</title>
 <link rel="stylesheet" href="<?= BASE_PATH ?>/assets/css/public.css">
 </head>
-<body>
-<div class="auth-wrap">
-  <div class="auth-logo">
-    <span class="site-name">🇪🇹 Specific Ethiopian</span>
-    <span class="site-tagline">Attendance Management System</span>
-  </div>
-  <div class="auth-card">
-    <h1 class="auth-title">Welcome back</h1>
-    <p class="auth-subtitle">Sign in to your organization / ወደ ድርጅትዎ ይግቡ</p>
-
-    <?php if ($error): ?><div class="alert alert-error">⚠️ <?= e($error) ?></div><?php endif; ?>
-
-    <form method="POST">
-      <div class="form-group">
-        <label class="form-label">Username / የተጠቃሚ ስም</label>
-        <input class="form-input" type="text" name="username" required
-          placeholder="your-username"
-          autocomplete="username"
-          value="<?= e($_POST['username'] ?? '') ?>">
+<body class="split-page">
+<div class="split-wrap">
+  <div class="split-image" style="background-image: url('<?= BASE_PATH ?>/assets/img/register-panel.jpg')">
+    <div class="split-overlay">
+      <div class="split-brand">
+        <span class="brand-flag">🇪🇹</span>
+        <span class="brand-name">Specific Ethiopian</span>
+        <span class="brand-tagline">Smart Attendance Management System</span>
       </div>
-      <div class="form-group">
-        <label class="form-label">Password / የይለፍ ቃል</label>
-        <input class="form-input" type="password" name="password" required
-          placeholder="••••••••"
-          autocomplete="current-password">
+      <div class="split-features">
+        <div class="feature-row"><span class="feature-icon">🤖</span><span>Your own Telegram bot per organization</span></div>
+        <div class="feature-row"><span class="feature-icon">📍</span><span>GPS attendance verification</span></div>
+        <div class="feature-row"><span class="feature-icon">📊</span><span>Daily automated reports</span></div>
+        <div class="feature-row"><span class="feature-icon">🏢</span><span>Multi-branch & level support</span></div>
       </div>
-      <button type="submit" class="btn-primary">Sign In →</button>
-    </form>
+    </div>
   </div>
-  <div class="auth-footer">
-    Don't have an account? <a href="<?= BASE_PATH ?>/register.php">Register your organization</a>
+  <div class="split-form">
+    <div class="form-card">
+      <div class="form-header">
+        <h1 class="form-title">Welcome back 👋</h1>
+        <p class="form-subtitle">Sign in to your organization / ወደ ድርጅትዎ ይግቡ</p>
+      </div>
+
+      <?php if ($error): ?><div class="alert alert-error">⚠️ <span><?= e($error) ?></span></div><?php endif; ?>
+
+      <form method="POST" class="auth-form">
+        <div class="form-group">
+          <label class="form-label">Username / የተጠቃሚ ስም</label>
+          <input class="form-input" type="text" name="username" required
+            placeholder="your-username"
+            autocomplete="username"
+            value="<?= e($_POST['username'] ?? '') ?>">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password / የይለፍ ቃል</label>
+          <input class="form-input" type="password" name="password" required
+            placeholder="••••••••"
+            autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn-primary btn-lg">Sign In →</button>
+      </form>
+
+      <div class="form-footer">
+        Don't have an account? <a href="<?= BASE_PATH ?>/register.php">Register your organization</a>
+      </div>
+    </div>
   </div>
 </div>
 </body>

@@ -14,7 +14,7 @@ if (is_post()) {
     $email    = trim(strtolower($_POST['email'] ?? ''));
     $password = $_POST['password'] ?? '';
     $confirm  = $_POST['confirm_password'] ?? '';
-    $type     = in_array($_POST['member_type'] ?? '', ['student','employee']) ? $_POST['member_type'] : 'student';
+    $type     = resolve_member_type($_POST['member_types'] ?? []);
 
     // Validation
     if (!$name || !$username || !$password) {
@@ -26,7 +26,6 @@ if (is_post()) {
     } elseif ($password !== $confirm) {
         $error = 'Passwords do not match. / የይለፍ ቃሎቹ አይዛመዱም።';
     } else {
-        // Check username uniqueness
         $stmt = db()->prepare('SELECT id FROM companies WHERE username = ?');
         $stmt->execute([$username]);
         if ($stmt->fetch()) {
@@ -34,7 +33,6 @@ if (is_post()) {
         } else {
             $slug    = unique_slug($name);
             $hash    = hash_password($password);
-            $appUrl  = BASE_URL . '/?c=' . $slug;   // Vercel mini app URL
             $cronSec = random_token(16);
 
             $db = db();
@@ -71,72 +69,107 @@ if (is_post()) {
 <title>Register — Specific Ethiopian Attendance</title>
 <link rel="stylesheet" href="<?= BASE_PATH ?>/assets/css/public.css">
 </head>
-<body>
-<div class="auth-wrap">
-  <div class="auth-logo">
-    <span class="site-name">🇪🇹 Specific Ethiopian</span>
-    <span class="site-tagline">Attendance Management System</span>
+<body class="split-page">
+<div class="split-wrap">
+  <div class="split-image" style="background-image: url('<?= BASE_PATH ?>/assets/img/register-panel.jpg')">
+    <div class="split-overlay">
+      <div class="split-brand">
+        <span class="brand-flag">🇪🇹</span>
+        <span class="brand-name">Specific Ethiopian</span>
+        <span class="brand-tagline">Smart Attendance Management System</span>
+      </div>
+      <div class="split-testimonial">
+        <div class="testimonial-text">"የእኛን ተማሪዎች መገኘት ከዚህ ቀደም በነበረው የተሻለ ሁኔታ እንድንቆጣጠር ረድቶናል"</div>
+        <div class="testimonial-author">— የበገና የሙዚቃ ትምህርት ቤት</div>
+      </div>
+      <div class="split-stats">
+        <div class="stat-item"><span class="stat-number">150+</span><span class="stat-label">Organizations</span></div>
+        <div class="stat-item"><span class="stat-number">15K+</span><span class="stat-label">Members</span></div>
+        <div class="stat-item"><span class="stat-number">99.9%</span><span class="stat-label">Uptime</span></div>
+      </div>
+    </div>
   </div>
-  <div class="auth-card">
-    <h1 class="auth-title">Create your account</h1>
-    <p class="auth-subtitle">ድርጅትዎን ይመዝግቡ / Register your organization</p>
-
-    <?php if ($error): ?><div class="alert alert-error">⚠️ <?= e($error) ?></div><?php endif; ?>
-
-    <form method="POST">
-
-      <div class="form-group">
-        <label class="form-label">Organization / School Name *</label>
-        <input class="form-input" type="text" name="name" required
-          placeholder="e.g. Begena Music School / የበገና ትምህርት ቤት"
-          value="<?= e($_POST['name'] ?? '') ?>">
+  <div class="split-form">
+    <div class="form-card">
+      <div class="form-header">
+        <h1 class="form-title">Create your account</h1>
+        <p class="form-subtitle">ድርጅትዎን ይመዝግቡ / Register your organization</p>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Username * <small style="color:var(--text2);font-weight:400">(used to log in)</small></label>
-        <input class="form-input" type="text" name="username" required
-          placeholder="e.g. begena_school"
-          pattern="[a-z0-9_-]{3,30}"
-          title="Lowercase letters, numbers, hyphens and underscores only (3–30 chars)"
-          autocomplete="username"
-          value="<?= e($_POST['username'] ?? '') ?>">
-        <div class="form-hint">Only lowercase letters, numbers, <code>-</code> and <code>_</code> allowed. Example: <em>begena_school</em></div>
-      </div>
+      <?php if ($error): ?><div class="alert alert-error">⚠️ <span><?= e($error) ?></span></div><?php endif; ?>
 
-      <div class="form-group">
-        <label class="form-label">Email Address <small style="color:var(--text2);font-weight:400">(optional — for notifications)</small></label>
-        <input class="form-input" type="email" name="email"
-          placeholder="admin@yourschool.com"
-          value="<?= e($_POST['email'] ?? '') ?>">
-      </div>
+      <form method="POST" class="auth-form">
 
-      <div class="form-group">
-        <label class="form-label">Member Type / አባላት አይነት</label>
-        <select class="form-input" name="member_type">
-          <option value="student"  <?= ($_POST['member_type'] ?? '') === 'student'  ? 'selected' : '' ?>>Students / ተማሪዎች</option>
-          <option value="employee" <?= ($_POST['member_type'] ?? '') === 'employee' ? 'selected' : '' ?>>Employees / ሰራተኞች</option>
-        </select>
-      </div>
+        <div class="form-group">
+          <label class="form-label">Organization / School Name *</label>
+          <input class="form-input" type="text" name="name" required
+            placeholder="e.g. Begena Music School"
+            value="<?= e($_POST['name'] ?? '') ?>">
+        </div>
 
-      <div class="form-group">
-        <label class="form-label">Password *</label>
-        <input class="form-input" type="password" name="password" required
-          placeholder="At least 8 characters"
-          autocomplete="new-password">
-      </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Username *</label>
+            <input class="form-input" type="text" name="username" required
+              placeholder="e.g. begena_school"
+              pattern="[a-z0-9_-]{3,30}"
+              title="Lowercase letters, numbers, hyphens and underscores only (3–30 chars)"
+              autocomplete="username"
+              value="<?= e($_POST['username'] ?? '') ?>">
+            <div class="form-hint">3–30 chars: lowercase, numbers, <code>-</code> <code>_</code></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email (Optional)</label>
+            <input class="form-input" type="email" name="email"
+              placeholder="admin@yourschool.com"
+              value="<?= e($_POST['email'] ?? '') ?>">
+          </div>
+        </div>
 
-      <div class="form-group">
-        <label class="form-label">Confirm Password *</label>
-        <input class="form-input" type="password" name="confirm_password" required
-          placeholder="Repeat your password"
-          autocomplete="new-password">
-      </div>
+        <div class="form-group">
+          <label class="form-label">Member Type / አባላት አይነት</label>
+          <div class="checkbox-grid">
+            <label class="checkbox-card <?= in_array('student', $_POST['member_types'] ?? ['student']) ? 'checked' : '' ?>">
+              <input type="checkbox" name="member_types[]" value="student"
+                onchange="this.parentElement.classList.toggle('checked', this.checked)"
+                <?= in_array('student', $_POST['member_types'] ?? ['student']) ? 'checked' : '' ?>>
+              <span class="checkbox-icon">🎓</span>
+              <span class="checkbox-label">Students / ተማሪዎች</span>
+              <span class="checkbox-desc">For schools, colleges, universities</span>
+            </label>
+            <label class="checkbox-card <?= in_array('employee', $_POST['member_types'] ?? []) ? 'checked' : '' ?>">
+              <input type="checkbox" name="member_types[]" value="employee"
+                onchange="this.parentElement.classList.toggle('checked', this.checked)"
+                <?= in_array('employee', $_POST['member_types'] ?? []) ? 'checked' : '' ?>>
+              <span class="checkbox-icon">👔</span>
+              <span class="checkbox-label">Employees / ሰራተኞች</span>
+              <span class="checkbox-desc">For offices, factories, organizations</span>
+            </label>
+          </div>
+        </div>
 
-      <button type="submit" class="btn-primary">Create Organization →</button>
-    </form>
-  </div>
-  <div class="auth-footer">
-    Already registered? <a href="<?= BASE_PATH ?>/login.php">Sign In</a>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Password *</label>
+            <input class="form-input" type="password" name="password" required
+              placeholder="At least 8 characters"
+              autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confirm Password *</label>
+            <input class="form-input" type="password" name="confirm_password" required
+              placeholder="Repeat your password"
+              autocomplete="new-password">
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary btn-lg">Create Organization →</button>
+      </form>
+
+      <div class="form-footer">
+        Already registered? <a href="<?= BASE_PATH ?>/login.php">Sign In</a>
+      </div>
+    </div>
   </div>
 </div>
 </body>

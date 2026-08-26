@@ -68,7 +68,7 @@ include __DIR__ . '/_header.php';
   <div class="card-header">
     <div>
       <h2 class="card-title">Manage Members</h2>
-      <p class="card-subtitle">Add or edit your <?= e($company['member_type']) ?>s list</p>
+      <p class="card-subtitle">Add or edit your <?= e(member_type_label($company['member_type'] ?? 'student', true)) ?>s list</p>
     </div>
     <div class="topbar-actions">
       <!-- We could link to members-import.php for CSV bulk upload here -->

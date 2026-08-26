@@ -50,7 +50,7 @@ include __DIR__ . '/_header.php';
           <tr>
             <th>Date / Time</th>
             <th>Payer Name</th>
-            <th><?= e(ucfirst($company['member_type'])) ?> Name</th>
+            <th><?= e(member_type_label($company['member_type'] ?? 'student')) ?> Name</th>
             <th>Receipt Image</th>
             <th>Telegram Status</th>
           </tr>

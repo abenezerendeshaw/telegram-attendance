@@ -27,6 +27,7 @@ json_out([
     'description'             => $company['description'],
     'primaryColor'            => $company['primary_color'] ?? '#d97706',
     'memberType'              => $company['member_type'] ?? 'student',
+    'memberTypeLabel'         => member_type_label($company['member_type'] ?? 'student', true),
     'disableGpsCheck'         => (bool)($company['disable_gps_check'] ?? false),
     'allowOftimeSubmission'   => (bool)($company['allow_offtime_submission'] ?? false),
     'allowMultipleSubmissions'=> (bool)($company['allow_multiple_submissions'] ?? false),

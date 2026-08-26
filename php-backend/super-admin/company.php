@@ -116,7 +116,7 @@ $pageTitle = 'Manage: ' . $c['name'];
       <div style="margin-top:20px;font-size:0.9rem;line-height:1.8">
         <div><strong style="color:#aaa;display:inline-block;width:120px">Company ID:</strong> <?= $c['id'] ?></div>
         <div><strong style="color:#aaa;display:inline-block;width:120px">URL Slug:</strong> <?= e($c['slug']) ?></div>
-        <div><strong style="color:#aaa;display:inline-block;width:120px">Member Type:</strong> <?= e($c['member_type']) ?></div>
+        <div><strong style="color:#aaa;display:inline-block;width:120px">Member Type:</strong> <?= e(member_type_label($c['member_type'] ?? 'student', true)) ?></div>
         <div><strong style="color:#aaa;display:inline-block;width:120px">Joined:</strong> <?= date('F j, Y', strtotime($c['created_at'])) ?></div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
           <strong style="color:#aaa;display:inline-block;width:120px">Bot Token:</strong> 
