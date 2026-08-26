@@ -24,11 +24,13 @@ RewriteRule ^(.*)/$ /$1 [R=301,L]
 # ── Security: Block direct PHP execution in uploads ───────────────────────
 RewriteRule ^uploads/.*\.php$ - [F,L]
 
-# ── PHP settings for shared hosting ──────────────────────────────────────
-php_value upload_max_filesize 10M
-php_value post_max_size 12M
-php_value max_execution_time 60
-php_value memory_limit 256M
+# ── PHP settings for shared hosting (safe wrapper for PHP-FPM / LiteSpeed) ────
+<IfModule mod_php7.c>
+    php_value upload_max_filesize 10M
+    php_value post_max_size 12M
+    php_value max_execution_time 60
+    php_value memory_limit 256M
+</IfModule>
 
 # ── Security headers ──────────────────────────────────────────────────────
 <IfModule mod_headers.c>

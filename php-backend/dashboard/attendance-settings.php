@@ -7,43 +7,56 @@ $flash   = flash_get();
 $pageTitle = 'Attendance Rules';
 
 if (is_post()) {
-    $cLat  = trim($_POST['class_lat'] ?? '');
-    $cLng  = trim($_POST['class_lng'] ?? '');
-    $dist  = (int)($_POST['max_distance_meters'] ?? 400);
-    $dGps  = isset($_POST['disable_gps_check']) ? 1 : 0;
-    
-    $wStart = trim($_POST['attendance_window_start'] ?? '23:30');
-    $wEnd   = trim($_POST['attendance_window_end'] ?? '02:30');
-    $dOff   = isset($_POST['allow_offtime_submission']) ? 1 : 0;
-    $dMult  = isset($_POST['allow_multiple_submissions']) ? 1 : 0;
-    $dRec   = isset($_POST['enable_receipt_upload']) ? 1 : 0;
-    
-    $days = [];
-    if (!empty($_POST['days']) && is_array($_POST['days'])) {
-        foreach ($_POST['days'] as $d) {
-            $val = (int)$d;
-            if ($val >= 0 && $val <= 6) $days[] = $val;
+    try {
+        $cLat  = trim($_POST['class_lat'] ?? '');
+        $cLng  = trim($_POST['class_lng'] ?? '');
+        $dist  = (int)($_POST['max_distance_meters'] ?? 400);
+        $dGps  = isset($_POST['disable_gps_check']) ? 1 : 0;
+        
+        $wStart = trim($_POST['attendance_window_start'] ?? '23:30');
+        $wEnd   = trim($_POST['attendance_window_end'] ?? '02:30');
+        $dOff   = isset($_POST['allow_offtime_submission']) ? 1 : 0;
+        $dMult  = isset($_POST['allow_multiple_submissions']) ? 1 : 0;
+        $dRec   = isset($_POST['enable_receipt_upload']) ? 1 : 0;
+        
+        $days = [];
+        if (!empty($_POST['days']) && is_array($_POST['days'])) {
+            foreach ($_POST['days'] as $d) {
+                $val = (int)$d;
+                if ($val >= 0 && $val <= 6) $days[] = $val;
+            }
         }
-    }
-    $cDays = implode(',', $days) ?: '1,3,5';
+        $cDays = implode(',', $days) ?: '1,3,5';
 
-    $stmt = db()->prepare(
-        'UPDATE company_settings SET 
-         class_lat = ?, class_lng = ?, max_distance_meters = ?, disable_gps_check = ?,
-         attendance_window_start = ?, attendance_window_end = ?, class_days = ?,
-         allow_offtime_submission = ?, allow_multiple_submissions = ?, enable_receipt_upload = ?
-         WHERE company_id = ?'
-    );
-    
-    $stmt->execute([
-        $cLat ?: null, $cLng ?: null, $dist, $dGps,
-        $wStart, $wEnd, $cDays,
-        $dOff, $dMult, $dRec,
-        $company['id']
-    ]);
-    
-    flash_set('success', 'Attendance rules updated.');
-    redirect('attendance-settings.php');
+        $stmt = db()->prepare(
+            'INSERT INTO company_settings 
+             (company_id, class_lat, class_lng, max_distance_meters, disable_gps_check, attendance_window_start, attendance_window_end, class_days, allow_offtime_submission, allow_multiple_submissions, enable_receipt_upload)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+             class_lat = VALUES(class_lat),
+             class_lng = VALUES(class_lng),
+             max_distance_meters = VALUES(max_distance_meters),
+             disable_gps_check = VALUES(disable_gps_check),
+             attendance_window_start = VALUES(attendance_window_start),
+             attendance_window_end = VALUES(attendance_window_end),
+             class_days = VALUES(class_days),
+             allow_offtime_submission = VALUES(allow_offtime_submission),
+             allow_multiple_submissions = VALUES(allow_multiple_submissions),
+             enable_receipt_upload = VALUES(enable_receipt_upload)'
+        );
+        
+        $stmt->execute([
+            $company['id'],
+            $cLat ?: null, $cLng ?: null, $dist, $dGps,
+            $wStart, $wEnd, $cDays,
+            $dOff, $dMult, $dRec
+        ]);
+        
+        flash_set('success', 'Attendance rules updated.');
+        redirect('attendance-settings.php');
+    } catch (Throwable $e) {
+        flash_set('error', 'Error saving attendance rules: ' . $e->getMessage());
+    }
 }
 
 $cDaysArr = explode(',', $company['class_days'] ?? '1,3,5');

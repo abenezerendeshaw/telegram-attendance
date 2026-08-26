@@ -54,6 +54,10 @@ $currentPath = basename($_SERVER['PHP_SELF']);
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         Company Profile
       </a>
+      <a href="password.php" class="nav-item <?= $currentPath === 'password.php' ? 'active' : '' ?>">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        Account & Password
+      </a>
       <a href="bot-setup.php" class="nav-item <?= $currentPath === 'bot-setup.php' ? 'active' : '' ?>">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 012 2c0 1.1-.9 2-2 2s-2-.9-2-2a2 2 0 012-2zm0 6c-3.3 0-6 2.7-6 6v8h12v-8c0-3.3-2.7-6-6-6z"/></svg>
         Telegram Bot

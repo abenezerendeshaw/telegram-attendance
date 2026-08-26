@@ -7,100 +7,79 @@ $flash   = flash_get();
 $pageTitle = 'Company Profile';
 
 if (is_post()) {
-    $name        = trim($_POST['name'] ?? '');
-    $description = trim($_POST['description'] ?? '');
-    $color       = trim($_POST['primary_color'] ?? '#d97706');
-    $mType       = resolve_member_type($_POST['member_types'] ?? []);
+    try {
+        $name        = trim($_POST['name'] ?? '');
+        $description = trim($_POST['description'] ?? '');
+        $color       = trim($_POST['primary_color'] ?? '#d97706');
+        $mType       = resolve_member_type($_POST['member_types'] ?? []);
 
-    $logoPath  = $company['logo_path'];
-    $coverPath = $company['cover_image'];
-
-    // Handle logo upload
-    if (!empty($_FILES['logo']['tmp_name'])) {
-        $file = $_FILES['logo'];
-        if ($file['size'] <= 2 * 1024 * 1024 && str_starts_with($file['type'], 'image/')) {
-            $ext = pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'jpg';
-            $newName = $company['slug'] . '_logo_' . time() . '.' . $ext;
-            $dest = __DIR__ . '/../uploads/logos/' . $newName;
-            if (move_uploaded_file($file['tmp_name'], $dest)) {
-                if ($logoPath && file_exists(__DIR__ . '/../uploads/logos/' . basename($logoPath))) {
-                    @unlink(__DIR__ . '/../uploads/logos/' . basename($logoPath));
-                }
-                $logoPath = $newName;
-            }
-        } else {
-            flash_set('error', 'Logo must be an image under 2MB.');
+        if (!$name) {
+            flash_set('error', 'Organization Name is required.');
+            redirect('settings.php');
         }
-    }
 
-    // Handle cover upload
-    if (!empty($_FILES['cover']['tmp_name'])) {
-        $file = $_FILES['cover'];
-        if ($file['size'] <= 5 * 1024 * 1024 && str_starts_with($file['type'], 'image/')) {
-            $ext = pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'jpg';
-            $newName = $company['slug'] . '_cover_' . time() . '.' . $ext;
-            $dest = __DIR__ . '/../uploads/covers/' . $newName;
-            if (move_uploaded_file($file['tmp_name'], $dest)) {
-                if ($coverPath && file_exists(__DIR__ . '/../uploads/covers/' . basename($coverPath))) {
-                    @unlink(__DIR__ . '/../uploads/covers/' . basename($coverPath));
+        $logoPath  = $company['logo_path'] ?? null;
+        $coverPath = $company['cover_image'] ?? null;
+
+        $validExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+
+        // Handle logo upload
+        if (!empty($_FILES['logo']['tmp_name'])) {
+            $file  = $_FILES['logo'];
+            $ext   = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'jpg');
+            $isImg = str_starts_with($file['type'] ?? '', 'image/') || in_array($ext, $validExts, true);
+            if ($file['error'] === UPLOAD_ERR_OK && $file['size'] <= 2 * 1024 * 1024 && $isImg) {
+                $newName = $company['slug'] . '_logo_' . time() . '.' . $ext;
+                $destDir = __DIR__ . '/../uploads/logos/';
+                if (!is_dir($destDir)) @mkdir($destDir, 0755, true);
+                $dest = $destDir . $newName;
+                if (move_uploaded_file($file['tmp_name'], $dest)) {
+                    if ($logoPath && file_exists($destDir . basename($logoPath))) {
+                        @unlink($destDir . basename($logoPath));
+                    }
+                    $logoPath = $newName;
+                } else {
+                    flash_set('error', 'Failed to save logo file to server. Please check folder permissions.');
+                    redirect('settings.php');
                 }
-                $coverPath = $newName;
+            } else {
+                flash_set('error', 'Logo must be a valid image (JPG, PNG, WEBP) under 2MB.');
+                redirect('settings.php');
             }
         }
-    }
 
-    if ($name) {
+        // Handle cover upload
+        if (!empty($_FILES['cover']['tmp_name'])) {
+            $file  = $_FILES['cover'];
+            $ext   = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'jpg');
+            $isImg = str_starts_with($file['type'] ?? '', 'image/') || in_array($ext, $validExts, true);
+            if ($file['error'] === UPLOAD_ERR_OK && $file['size'] <= 5 * 1024 * 1024 && $isImg) {
+                $newName = $company['slug'] . '_cover_' . time() . '.' . $ext;
+                $destDir = __DIR__ . '/../uploads/covers/';
+                if (!is_dir($destDir)) @mkdir($destDir, 0755, true);
+                $dest = $destDir . $newName;
+                if (move_uploaded_file($file['tmp_name'], $dest)) {
+                    if ($coverPath && file_exists($destDir . basename($coverPath))) {
+                        @unlink($destDir . basename($coverPath));
+                    }
+                    $coverPath = $newName;
+                } else {
+                    flash_set('error', 'Failed to save cover image to server. Please check folder permissions.');
+                    redirect('settings.php');
+                }
+            } else {
+                flash_set('error', 'Cover image must be a valid image (JPG, PNG, WEBP) under 5MB.');
+                redirect('settings.php');
+            }
+        }
+
         $stmt = db()->prepare('UPDATE companies SET name = ?, description = ?, primary_color = ?, member_type = ?, logo_path = ?, cover_image = ? WHERE id = ?');
-        $stmt->execute([$name, $description, $color, $mType, $logoPath, $coverPath, $company['id']]);
+        $stmt->execute([$name, $description ?: null, $color, $mType, $logoPath, $coverPath, $company['id']]);
+        
         flash_set('success', 'Profile updated successfully.');
         redirect('settings.php');
-    }
-
-    // ── Password change ─────────────────────────────────────────────────
-    if (isset($_POST['change_password'])) {
-        $current   = $_POST['current_password'] ?? '';
-        $newPass   = $_POST['new_password'] ?? '';
-        $confirm   = $_POST['confirm_password'] ?? '';
-        $newEmail  = trim($_POST['email'] ?? $company['email']);
-        $newUser   = trim(strtolower($_POST['username'] ?? $company['username']));
-
-        // Validate username uniqueness (if changed)
-        if ($newUser !== $company['username']) {
-            if (!preg_match('/^[a-z0-9_-]{3,30}$/', $newUser)) {
-                flash_set('error', 'Username must be 3–30 characters: lowercase letters, numbers, - or _ only.');
-                redirect('settings.php#password');
-            }
-            $chk = db()->prepare('SELECT id FROM companies WHERE username = ? AND id != ? LIMIT 1');
-            $chk->execute([$newUser, $company['id']]);
-            if ($chk->fetch()) {
-                flash_set('error', 'This username is already taken.');
-                redirect('settings.php#password');
-            }
-        }
-
-        if ($newPass !== '' || $newUser !== $company['username'] || $newEmail !== ($company['email'] ?? '')) {
-            if (!password_verify($current, $company['password_hash'])) {
-                flash_set('error', 'Current password is incorrect.');
-                redirect('settings.php#password');
-            }
-            if ($newPass !== '') {
-                if (strlen($newPass) < 8) {
-                    flash_set('error', 'New password must be at least 8 characters.');
-                    redirect('settings.php#password');
-                }
-                if ($newPass !== $confirm) {
-                    flash_set('error', 'New passwords do not match.');
-                    redirect('settings.php#password');
-                }
-            }
-
-            $hash = $newPass !== '' ? hash_password($newPass) : $company['password_hash'];
-            $stmt = db()->prepare('UPDATE companies SET password_hash = ?, username = ?, email = ? WHERE id = ?');
-            $stmt->execute([$hash, $newUser, $newEmail ?: null, $company['id']]);
-            $_SESSION['company_slug'] = $company['slug'];
-            flash_set('success', 'Account settings updated successfully.');
-            redirect('settings.php#password');
-        }
+    } catch (Throwable $e) {
+        flash_set('error', 'Failed to update profile: ' . $e->getMessage());
     }
 }
 include __DIR__ . '/_header.php';
@@ -116,7 +95,7 @@ include __DIR__ . '/_header.php';
       <div class="grid-2">
         <div class="form-group">
           <label class="form-label">Organization Name *</label>
-          <input class="form-input" type="text" name="name" value="<?= e($company['name']) ?>" required>
+          <input class="form-input" type="text" name="name" value="<?= e($company['name'] ?? '') ?>" required>
         </div>
         
         <div class="form-group">
@@ -124,12 +103,12 @@ include __DIR__ . '/_header.php';
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
               <input type="checkbox" name="member_types[]" value="student" style="accent-color:var(--accent)"
-                <?= ($company['member_type'] === 'student' || $company['member_type'] === 'both') ? 'checked' : '' ?>>
+                <?= (($company['member_type'] ?? '') === 'student' || ($company['member_type'] ?? '') === 'both') ? 'checked' : '' ?>>
               🎓 Students / ተማሪዎች
             </label>
             <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
               <input type="checkbox" name="member_types[]" value="employee" style="accent-color:var(--accent)"
-                <?= ($company['member_type'] === 'employee' || $company['member_type'] === 'both') ? 'checked' : '' ?>>
+                <?= (($company['member_type'] ?? '') === 'employee' || ($company['member_type'] ?? '') === 'both') ? 'checked' : '' ?>>
               👔 Employees / ሰራተኞች
             </label>
           </div>
@@ -138,7 +117,7 @@ include __DIR__ . '/_header.php';
 
       <div class="form-group">
         <label class="form-label">Description (Shown on mini app)</label>
-        <textarea class="form-textarea" name="description"><?= e($company['description']) ?></textarea>
+        <textarea class="form-textarea" name="description"><?= e($company['description'] ?? '') ?></textarea>
       </div>
 
       <div class="form-group">
@@ -176,45 +155,6 @@ include __DIR__ . '/_header.php';
       <div class="divider"></div>
       
       <button type="submit" class="btn btn-primary">Save Profile Settings</button>
-    </form>
-  </div>
-
-  <div class="card" style="max-width:800px" id="password">
-    <h2 class="card-title mb-4">Account & Password</h2>
-    <form method="POST">
-      <input type="hidden" name="change_password" value="1">
-
-      <div class="grid-2">
-        <div class="form-group">
-          <label class="form-label">Username (Login)</label>
-          <input class="form-input" type="text" name="username" value="<?= e($company['username']) ?>" pattern="[a-z0-9_-]{3,30}" title="Lowercase letters, numbers, hyphens and underscores only (3–30 chars)">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Email Address (Optional)</label>
-          <input class="form-input" type="email" name="email" value="<?= e($company['email'] ?? '') ?>">
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="form-group">
-        <label class="form-label">Current Password *</label>
-        <input class="form-input" type="password" name="current_password" autocomplete="current-password">
-      </div>
-
-      <div class="grid-2">
-        <div class="form-group">
-          <label class="form-label">New Password (min 8 chars)</label>
-          <input class="form-input" type="password" name="new_password" autocomplete="new-password">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Confirm New Password</label>
-          <input class="form-input" type="password" name="confirm_password" autocomplete="new-password">
-        </div>
-      </div>
-      <p style="color:var(--text2);font-size:0.85rem;margin:8px 0 16px">Leave new password fields empty to keep your current password. Current password is required to save username/email changes.</p>
-
-      <button type="submit" class="btn btn-primary">Update Account & Password</button>
     </form>
   </div>
 </div>

@@ -9,10 +9,13 @@ define('SESSION_NAME', 'se_attendance_sess');
 function start_session(): void {
     if (session_status() === PHP_SESSION_NONE) {
         session_name(SESSION_NAME);
+        $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || ($_SERVER['SERVER_PORT'] ?? '') == 443
+            || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
         session_set_cookie_params([
             'lifetime' => 86400 * 7, // 7 days
             'path'     => '/',
-            'secure'   => true,
+            'secure'   => $isSecure,
             'httponly' => true,
             'samesite' => 'Lax',
         ]);

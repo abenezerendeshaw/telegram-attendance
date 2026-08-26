@@ -36,11 +36,14 @@ function set_cors(): void {
         'https://global-attendace.vercel.app',
         'https://telegram-attendance-dzbz.vercel.app',
         'https://specificethiopian.com',
+        'http://specificethiopian.com',
+        'https://www.specificethiopian.com',
+        'http://www.specificethiopian.com',
         'http://localhost:5173',
         'http://localhost:3000',
     ];
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    if (in_array($origin, $allowed, true)) {
+    if ($origin && (in_array($origin, $allowed, true) || preg_match('/^https?:\/\/(?:[a-z0-9-]+\.)*specificethiopian\.com$/i', $origin))) {
         header("Access-Control-Allow-Origin: {$origin}");
     }
     header('Access-Control-Allow-Methods: GET, POST, OPTIONS');

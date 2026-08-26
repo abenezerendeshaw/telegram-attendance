@@ -21,6 +21,16 @@ $TOKEN      = $isAdminBot
     ? ($company['admin_bot_token']    ?? '')
     : ($company['telegram_bot_token'] ?? '');
 
+// If opened in a web browser (GET request), redirect to the attendance mini app
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $webAppUrl = !empty($company['webapp_url'])
+        ? $company['webapp_url']
+        : "https://global-attendace.vercel.app/?c={$company['slug']}";
+    if ($isAdminBot) $webAppUrl .= '#admin';
+    header("Location: {$webAppUrl}");
+    exit;
+}
+
 if (!$TOKEN) { http_response_code(200); die('ok'); }
 
 // ── Parse Telegram update ─────────────────────────────────────────────────

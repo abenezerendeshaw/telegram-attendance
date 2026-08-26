@@ -7,22 +7,37 @@ $flash   = flash_get();
 $pageTitle = 'Integrations';
 
 if (is_post()) {
-    $eSheets = isset($_POST['enable_google_sheets']) ? 1 : 0;
-    $sId     = trim($_POST['google_sheet_id'] ?? '');
-    
-    // Only update JSON if a new one was provided, otherwise keep existing
-    $sJson   = trim($_POST['google_service_account_json'] ?? '');
-    
-    if ($sJson) {
-        $stmt = db()->prepare('UPDATE company_settings SET enable_google_sheets = ?, google_sheet_id = ?, google_service_account_json = ? WHERE company_id = ?');
-        $stmt->execute([$eSheets, $sId, $sJson, $company['id']]);
-    } else {
-        $stmt = db()->prepare('UPDATE company_settings SET enable_google_sheets = ?, google_sheet_id = ? WHERE company_id = ?');
-        $stmt->execute([$eSheets, $sId, $company['id']]);
+    try {
+        $eSheets = isset($_POST['enable_google_sheets']) ? 1 : 0;
+        $sId     = trim($_POST['google_sheet_id'] ?? '');
+        $sJson   = trim($_POST['google_service_account_json'] ?? '');
+        
+        if ($sJson) {
+            $stmt = db()->prepare(
+                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id, google_service_account_json)
+                 VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                 enable_google_sheets = VALUES(enable_google_sheets),
+                 google_sheet_id = VALUES(google_sheet_id),
+                 google_service_account_json = VALUES(google_service_account_json)'
+            );
+            $stmt->execute([$company['id'], $eSheets, $sId, $sJson]);
+        } else {
+            $stmt = db()->prepare(
+                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id)
+                 VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                 enable_google_sheets = VALUES(enable_google_sheets),
+                 google_sheet_id = VALUES(google_sheet_id)'
+            );
+            $stmt->execute([$company['id'], $eSheets, $sId]);
+        }
+        
+        flash_set('success', 'Integration settings saved.');
+        redirect('integrations.php');
+    } catch (Throwable $e) {
+        flash_set('error', 'Error saving integrations: ' . $e->getMessage());
     }
-    
-    flash_set('success', 'Integration settings saved.');
-    redirect('integrations.php');
 }
 
 include __DIR__ . '/_header.php';

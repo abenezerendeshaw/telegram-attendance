@@ -77,12 +77,10 @@ if (!$adminOverride && !$company['allow_multiple_submissions']) {
 }
 
 // ── GPS check ─────────────────────────────────────────────────────────────
-if ($status === 'present' && !$adminOverride && !$company['disable_gps_check']) {
+$hasGpsConfig = !empty($company['class_lat']) && !empty($company['class_lng']);
+if ($status === 'present' && !$adminOverride && !$company['disable_gps_check'] && $hasGpsConfig) {
     if (!$latitude || !$longitude) {
         json_out(['error' => 'ቦታዎን ማረጋገጥ አልተቻለም። / Could not verify location.'], 400);
-    }
-    if (!$company['class_lat'] || !$company['class_lng']) {
-        json_out(['error' => 'GPS location not configured for this institution.'], 400);
     }
     $dist = haversine_distance(
         (float)$company['class_lat'], (float)$company['class_lng'],

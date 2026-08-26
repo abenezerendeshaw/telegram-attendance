@@ -4,8 +4,8 @@
 
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'specifyu_attendance_hub');   // your cPanel DB name
-define('DB_USER', 'root');              // your cPanel DB username
-define('DB_PASS', '');                  // your cPanel DB password
+define('DB_USER', 'specifyu_abenu');              // your cPanel DB username
+define('DB_PASS', '90100349300@Abeni');                  // your cPanel DB password
 define('DB_CHARSET', 'utf8mb4');
 
 // ── PDO Singleton ─────────────────────────────────────────────────────────
@@ -41,12 +41,18 @@ function get_company_by_slug(string $slug): ?array
     if (isset($cache[$slug]))
         return $cache[$slug];
     $stmt = db()->prepare(
-        'SELECT c.*, cs.* FROM companies c
+        'SELECT c.*, cs.*, c.id AS id FROM companies c
          LEFT JOIN company_settings cs ON cs.company_id = c.id
          WHERE c.slug = ? AND c.is_active = 1 LIMIT 1'
     );
     $stmt->execute([$slug]);
     $row = $stmt->fetch() ?: null;
+    if ($row && empty($row['company_id'])) {
+        $cronSec = random_token(16);
+        db()->prepare('INSERT IGNORE INTO company_settings (company_id, cron_secret) VALUES (?, ?)')->execute([$row['id'], $cronSec]);
+        $stmt->execute([$slug]);
+        $row = $stmt->fetch() ?: null;
+    }
     $cache[$slug] = $row;
     return $row;
 }
@@ -55,10 +61,17 @@ function get_company_by_slug(string $slug): ?array
 function get_company_by_id(int $id): ?array
 {
     $stmt = db()->prepare(
-        'SELECT c.*, cs.* FROM companies c
+        'SELECT c.*, cs.*, c.id AS id FROM companies c
          LEFT JOIN company_settings cs ON cs.company_id = c.id
          WHERE c.id = ? LIMIT 1'
     );
     $stmt->execute([$id]);
-    return $stmt->fetch() ?: null;
+    $row = $stmt->fetch() ?: null;
+    if ($row && empty($row['company_id'])) {
+        $cronSec = random_token(16);
+        db()->prepare('INSERT IGNORE INTO company_settings (company_id, cron_secret) VALUES (?, ?)')->execute([$row['id'], $cronSec]);
+        $stmt->execute([$id]);
+        $row = $stmt->fetch() ?: null;
+    }
+    return $row;
 }

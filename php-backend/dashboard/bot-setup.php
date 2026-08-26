@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/auth.php';
 
@@ -7,33 +7,47 @@ $flash   = flash_get();
 $pageTitle = 'Telegram Bot Setup';
 
 if (is_post()) {
-    $sToken = trim($_POST['telegram_bot_token'] ?? '');
-    $sChat  = trim($_POST['telegram_chat_id'] ?? '');
-    $tPres  = trim($_POST['telegram_topic_present'] ?? '');
-    $tAbs   = trim($_POST['telegram_topic_absent'] ?? '');
-    $tPerm  = trim($_POST['telegram_topic_permission'] ?? '');
-    $tRec   = trim($_POST['telegram_topic_receipt'] ?? '');
-    
-    $aToken = trim($_POST['admin_bot_token'] ?? '');
-    $aAdmins= trim($_POST['admin_bot_admins'] ?? '');
+    try {
+        $sToken = trim($_POST['telegram_bot_token'] ?? '');
+        $sChat  = trim($_POST['telegram_chat_id'] ?? '');
+        $tPres  = trim($_POST['telegram_topic_present'] ?? '');
+        $tAbs   = trim($_POST['telegram_topic_absent'] ?? '');
+        $tPerm  = trim($_POST['telegram_topic_permission'] ?? '');
+        $tRec   = trim($_POST['telegram_topic_receipt'] ?? '');
+        
+        $aToken = trim($_POST['admin_bot_token'] ?? '');
+        $aAdmins= trim($_POST['admin_bot_admins'] ?? '');
 
-    $stmt = db()->prepare(
-        'UPDATE company_settings SET 
-         telegram_bot_token = ?, telegram_chat_id = ?, 
-         telegram_topic_present = ?, telegram_topic_absent = ?, telegram_topic_permission = ?, telegram_topic_receipt = ?,
-         admin_bot_token = ?, admin_bot_admins = ?
-         WHERE company_id = ?'
-    );
-    
-    $stmt->execute([
-        $sToken ?: null, $sChat ?: null, 
-        $tPres ?: null, $tAbs ?: null, $tPerm ?: null, $tRec ?: null,
-        $aToken ?: null, $aAdmins ?: null,
-        $company['id']
-    ]);
-    
-    flash_set('success', 'Bot settings saved successfully.');
-    redirect('bot-setup.php');
+        $stmt = db()->prepare(
+            'INSERT INTO company_settings 
+             (company_id, telegram_bot_token, telegram_chat_id, telegram_topic_present, telegram_topic_absent, telegram_topic_permission, telegram_topic_receipt, admin_bot_token, admin_bot_admins)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+             telegram_bot_token = VALUES(telegram_bot_token),
+             telegram_chat_id = VALUES(telegram_chat_id),
+             telegram_topic_present = VALUES(telegram_topic_present),
+             telegram_topic_absent = VALUES(telegram_topic_absent),
+             telegram_topic_permission = VALUES(telegram_topic_permission),
+             telegram_topic_receipt = VALUES(telegram_topic_receipt),
+             admin_bot_token = VALUES(admin_bot_token),
+             admin_bot_admins = VALUES(admin_bot_admins)'
+        );
+        
+        $stmt->execute([
+            $company['id'],
+            $sToken ?: null, $sChat ?: null, 
+            $tPres !== '' ? (int)$tPres : null,
+            $tAbs !== '' ? (int)$tAbs : null,
+            $tPerm !== '' ? (int)$tPerm : null,
+            $tRec !== '' ? (int)$tRec : null,
+            $aToken ?: null, $aAdmins ?: null
+        ]);
+        
+        flash_set('success', 'Bot settings saved successfully.');
+        redirect('bot-setup.php');
+    } catch (Throwable $e) {
+        flash_set('error', 'Error saving bot settings: ' . $e->getMessage());
+    }
 }
 
 include __DIR__ . '/_header.php';
@@ -61,14 +75,23 @@ include __DIR__ . '/_header.php';
       </div>
 
       <div class="form-group">
-        <label class="form-label">Webhook URL (Read Only)</label>
+        <label class="form-label">Webhook URL (Telegram Bot Integration)</label>
         <div style="display:flex;gap:10px">
           <input class="form-input" type="text" value="https://specificethiopian.com/evaluation/webhook/<?= e($company['slug']) ?>" readonly style="background:rgba(255,255,255,0.02)">
           <?php if (!empty($company['telegram_bot_token'])): ?>
             <button type="button" class="btn btn-secondary" onclick="registerWebhook('student')" id="btn-reg-student">Register Webhook</button>
           <?php endif; ?>
         </div>
-        <div class="form-hint" id="res-student">Click register to link your bot with this system.</div>
+        <div class="form-hint" id="res-student">Click register to link your Telegram bot with this system.</div>
+      </div>
+
+      <div class="form-group" style="margin-top:16px">
+        <label class="form-label">Attendance Mini App Portal URL</label>
+        <div style="display:flex;gap:10px">
+          <input class="form-input" type="text" value="<?= e(!empty($company['webapp_url']) ? $company['webapp_url'] : ("https://global-attendace.vercel.app/?c=" . $company['slug'])) ?>" readonly style="background:rgba(255,255,255,0.02)">
+          <a href="<?= e(!empty($company['webapp_url']) ? $company['webapp_url'] : ("https://global-attendace.vercel.app/?c=" . $company['slug'])) ?>" target="_blank" class="btn btn-secondary" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">Open Portal ↗</a>
+        </div>
+        <div class="form-hint">This link opens your organization's attendance check-in profile page.</div>
       </div>
 
       <div class="divider"></div>
@@ -138,7 +161,8 @@ function registerWebhook(type) {
     fetch(BASE_PATH + '/api/register-webhook.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bot: type })
+        body: JSON.stringify({ bot: type }),
+        credentials: 'include'
     })
     .then(r => r.json())
     .then(data => {

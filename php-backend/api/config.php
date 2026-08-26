@@ -18,11 +18,11 @@ $defaultLogo = BASE_URL . '/assets/img/register-panel.jpg';
 json_out([
     'name'                    => $company['name'],
     'slug'                    => $company['slug'],
-    'logo'                    => $company['logo_path']
-                                 ? 'https://specificethiopian.com/uploads/logos/' . basename($company['logo_path'])
+    'logo'                    => !empty($company['logo_path'])
+                                 ? BASE_URL . '/uploads/logos/' . basename($company['logo_path'])
                                  : $defaultLogo,
-    'cover'                   => $company['cover_image']
-                                 ? 'https://specificethiopian.com/uploads/covers/' . basename($company['cover_image'])
+    'cover'                   => !empty($company['cover_image'])
+                                 ? BASE_URL . '/uploads/covers/' . basename($company['cover_image'])
                                  : $defaultLogo,
     'description'             => $company['description'],
     'primaryColor'            => $company['primary_color'] ?? '#d97706',
