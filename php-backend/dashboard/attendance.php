@@ -68,8 +68,10 @@ if (isset($_GET['export'])) {
     echo 'table { border-collapse: collapse; font-family: sans-serif; font-size: 13px; width: 100%; }';
     echo 'th { background-color: #d97706; color: #ffffff; padding: 10px; border: 1px solid #b45309; text-align: left; }';
     echo 'td { padding: 8px; border: 1px solid #e5e0d6; text-align: left; }';
-    echo '.present { color: #16a34a; font-weight: bold; }';
-    echo '.perm { color: #d97706; font-weight: bold; }';
+    echo 'td.status-cell { text-align: center; font-size: 16px; font-weight: bold; }';
+    echo '.present { color: #16a34a; }';
+    echo '.perm { color: #d97706; font-size: 14px; }';
+    echo '.absent { color: #dc2626; }';
     echo '</style></head><body>';
     echo '<h2>' . htmlspecialchars($company['name']) . ' — Attendance Log / አቴንዳንስ ሎግ</h2>';
     echo '<p>Level: <strong>' . htmlspecialchars($levelFilter === 'all' ? 'All Levels' : $levelFilter) . '</strong> | Date: <strong>' . htmlspecialchars($dateFilter) . '</strong></p>';
@@ -78,14 +80,21 @@ if (isset($_GET['export'])) {
     echo '</tr></thead><tbody>';
 
     foreach ($rows as $r) {
-        $stLabel = $r['status'] === 'present' ? 'የተገኘ' : 'ፈቃድ';
-        $stClass = $r['status'] === 'present' ? 'present' : 'perm';
+        $stLabel = '✗';
+        $stClass = 'absent';
+        if ($r['status'] === 'present') {
+            $stLabel = '✓';
+            $stClass = 'present';
+        } elseif ($r['status'] === 'permission') {
+            $stLabel = 'P';
+            $stClass = 'perm';
+        }
         $timeVal = $r['eth_time'] ?: date('H:i:s', strtotime($r['submitted_at']));
 
         echo '<tr>';
         echo '<td>' . htmlspecialchars($r['member_name']) . '</td>';
         echo '<td>' . htmlspecialchars($r['group_name'] ?: '—') . '</td>';
-        echo '<td class="' . $stClass . '">' . htmlspecialchars($stLabel) . '</td>';
+        echo '<td class="status-cell ' . $stClass . '">' . htmlspecialchars($stLabel) . '</td>';
         echo '<td>' . htmlspecialchars($r['eth_date']) . '</td>';
         echo '<td>' . htmlspecialchars($timeVal) . '</td>';
         echo '</tr>';
