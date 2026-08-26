@@ -126,14 +126,30 @@ if (isset($_GET['export'])) {
     $membersList = $stmt->fetchAll();
 
     // 3. Fetch all attendance records for these members & dates
-    $stmt = db()->prepare('SELECT member_name, status, eth_date FROM attendance_records WHERE company_id = ?');
+    $stmt = db()->prepare('SELECT member_id, member_name, status, eth_date FROM attendance_records WHERE company_id = ?');
     $stmt->execute([$company['id']]);
     $allAtt = $stmt->fetchAll();
 
-    $attMap = [];
+    $normName = function($str) {
+        $str = preg_replace('/\s*\(.*?\)\s*/', '', $str ?? '');
+        $str = preg_replace('/\s+/', ' ', $str);
+        return mb_strtolower(trim($str));
+    };
+
+    $attMapById   = [];
+    $attMapByName = [];
     foreach ($allAtt as $a) {
-        $kName = mb_strtolower(trim($a['member_name']));
-        $attMap[$kName][$a['eth_date']] = $a['status'];
+        $date = $a['eth_date'];
+        $st   = $a['status'];
+
+        if (!empty($a['member_id'])) {
+            $attMapById[(int)$a['member_id']][$date] = $st;
+        }
+
+        $nKey = $normName($a['member_name']);
+        if ($nKey !== '') {
+            $attMapByName[$nKey][$date] = $st;
+        }
     }
 
     if ($exportType === 'csv') {
@@ -158,12 +174,13 @@ if (isset($_GET['export'])) {
 
         // Data Rows
         foreach ($membersList as $m) {
-            $mKey = mb_strtolower(trim($m['name']));
+            $mId   = (int)$m['id'];
+            $mNorm = $normName($m['name']);
             $pCount = 0; $permCount = 0; $aCount = 0;
             $row = [$m['name'], $m['group_name'] ?: '—', $m['level_name'] ?: '—'];
 
             foreach ($distinctDates as $d) {
-                $st = $attMap[$mKey][$d] ?? null;
+                $st = $attMapById[$mId][$d] ?? $attMapByName[$mNorm][$d] ?? null;
                 if ($st === 'present') {
                     $row[] = '✓';
                     $pCount++;
@@ -217,7 +234,8 @@ if (isset($_GET['export'])) {
         echo '</tr></thead><tbody>';
 
         foreach ($membersList as $m) {
-            $mKey = mb_strtolower(trim($m['name']));
+            $mId   = (int)$m['id'];
+            $mNorm = $normName($m['name']);
             $pCount = 0; $permCount = 0; $aCount = 0;
             echo '<tr>';
             echo '<td class="name">' . htmlspecialchars($m['name']) . '</td>';
@@ -225,7 +243,7 @@ if (isset($_GET['export'])) {
             echo '<td>' . htmlspecialchars($m['level_name'] ?: '—') . '</td>';
 
             foreach ($distinctDates as $d) {
-                $st = $attMap[$mKey][$d] ?? null;
+                $st = $attMapById[$mId][$d] ?? $attMapByName[$mNorm][$d] ?? null;
                 if ($st === 'present') {
                     echo '<td class="present">✓</td>';
                     $pCount++;
