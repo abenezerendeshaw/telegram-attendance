@@ -25,3 +25,8 @@ dist-ssr
 
 .vercel
 .env*
+
+# Deployment artifacts
+*.zip
+php-backend/index.zip
+php-backend.zip
