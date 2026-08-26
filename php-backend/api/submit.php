@@ -100,13 +100,19 @@ if ($status === 'permission' && !$reason) {
 
 // ── Build display name ────────────────────────────────────────────────────
 $stmt = db()->prepare(
-    'SELECT * FROM members WHERE company_id = ? AND LOWER(name) = LOWER(?) LIMIT 1'
+    'SELECT m.*, b.name AS branch_name, l.name AS level_name
+     FROM members m
+     LEFT JOIN branches b ON b.id = m.branch_id
+     LEFT JOIN levels l ON l.id = m.level_id
+     WHERE m.company_id = ? AND LOWER(m.name) = LOWER(?) LIMIT 1'
 );
 $stmt->execute([$company['id'], $fullName]);
 $memberRow  = $stmt->fetch();
 $englishName = $memberRow['english_name'] ?? '';
 $displayName = $englishName ? "{$fullName} ({$englishName})" : $fullName;
 $groupText   = $group ?: ($memberRow['group_name'] ?? 'ያልተጠቀሰ');
+$branchText  = $memberRow['branch_name'] ?? '';
+$levelText   = $memberRow['level_name'] ?? '';
 
 // ── Ethiopian date & time ─────────────────────────────────────────────────
 $ethDate   = get_ethiopian_date($now);
@@ -116,14 +122,16 @@ $statusTxt = $status === 'present' ? 'ተገኝቷል / ተገኝታለች' : '�
 // ── Save to MySQL ─────────────────────────────────────────────────────────
 $stmt = db()->prepare(
     'INSERT INTO attendance_records
-     (company_id, member_id, member_name, group_name, status, reason, latitude, longitude, eth_date, eth_time, is_admin_override)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+     (company_id, member_id, member_name, group_name, branch_name, level_name, status, reason, latitude, longitude, eth_date, eth_time, is_admin_override)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 );
 $stmt->execute([
     $company['id'],
     $memberRow['id'] ?? null,
     $displayName,
     $groupText,
+    $branchText ?: null,
+    $levelText ?: null,
     $status,
     $reason,
     $latitude,
@@ -140,8 +148,14 @@ $chatId   = $company['telegram_chat_id']   ?? '';
 if ($botToken && $chatId) {
     $caption = "🎼 *{$company['name']} — መገኘት መዝገብ*\n\n"
              . "👤 *ሙሉ ስም:*\u{2001}{$displayName}\n"
-             . "📍 *ቡድን:*\u{2001}\u{2001}{$groupText}\n"
-             . "📊 *ሁኔታ:*\u{2001}\u{2001}{$statusTxt}\n"
+             . "📍 *ቡድን:*\u{2001}\u{2001}{$groupText}\n";
+    if ($branchText) {
+        $caption .= "🏢 *ቅርንጫፍ / Branch:*\u{2001}{$branchText}\n";
+    }
+    if ($levelText) {
+        $caption .= "🎓 *ደረጃ / Level:*\u{2001}\u{2001}{$levelText}\n";
+    }
+    $caption .= "📊 *ሁኔታ:*\u{2001}\u{2001}{$statusTxt}\n"
              . "📅 *ቀን:*\u{2001}\u{2001}\u{2001}{$ethDate}\n"
              . "⏰ *ሰዓት:*\u{2001}\u{2001}{$ethTime}";
     if ($status === 'permission' && $reason) {

@@ -12,16 +12,18 @@ if (is_post() && isset($_POST['action']) && $_POST['action'] === 'save') {
     $name    = trim($_POST['name'] ?? '');
     $ename   = trim($_POST['english_name'] ?? '');
     $group   = trim($_POST['group_name'] ?? '');
+    $branch  = (int)($_POST['branch_id'] ?? 0);
+    $level   = (int)($_POST['level_id'] ?? 0);
     $active  = isset($_POST['is_active']) ? 1 : 0;
     
     if ($name) {
         if ($id > 0) {
-            $stmt = db()->prepare('UPDATE members SET name = ?, english_name = ?, group_name = ?, is_active = ? WHERE id = ? AND company_id = ?');
-            $stmt->execute([$name, $ename, $group, $active, $id, $company['id']]);
+            $stmt = db()->prepare('UPDATE members SET name = ?, english_name = ?, group_name = ?, branch_id = ?, level_id = ?, is_active = ? WHERE id = ? AND company_id = ?');
+            $stmt->execute([$name, $ename, $group, $branch ?: null, $level ?: null, $active, $id, $company['id']]);
             flash_set('success', 'Member updated successfully.');
         } else {
-            $stmt = db()->prepare('INSERT INTO members (company_id, name, english_name, group_name, is_active) VALUES (?, ?, ?, ?, ?)');
-            $stmt->execute([$company['id'], $name, $ename, $group, $active]);
+            $stmt = db()->prepare('INSERT INTO members (company_id, name, english_name, group_name, branch_id, level_id, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            $stmt->execute([$company['id'], $name, $ename, $group, $branch ?: null, $level ?: null, $active]);
             flash_set('success', 'New member added successfully.');
         }
     }
@@ -40,9 +42,24 @@ if (is_post() && isset($_POST['action']) && $_POST['action'] === 'delete') {
 }
 
 // Fetch all members
-$stmt = db()->prepare('SELECT * FROM members WHERE company_id = ? ORDER BY group_name, name');
+$stmt = db()->prepare(
+    'SELECT m.*, b.name AS branch_name, l.name AS level_name
+     FROM members m
+     LEFT JOIN branches b ON b.id = m.branch_id
+     LEFT JOIN levels l ON l.id = m.level_id
+     WHERE m.company_id = ? ORDER BY m.group_name, m.name'
+);
 $stmt->execute([$company['id']]);
 $members = $stmt->fetchAll();
+
+// Fetch branches & levels for the modal dropdowns
+$stmt = db()->prepare('SELECT id, name FROM branches WHERE company_id = ? ORDER BY name');
+$stmt->execute([$company['id']]);
+$branches = $stmt->fetchAll();
+
+$stmt = db()->prepare('SELECT id, name FROM levels WHERE company_id = ? ORDER BY name');
+$stmt->execute([$company['id']]);
+$levels = $stmt->fetchAll();
 
 include __DIR__ . '/_header.php';
 ?>
@@ -69,6 +86,8 @@ include __DIR__ . '/_header.php';
             <th>Primary Name (Amharic)</th>
             <th>English Name</th>
             <th>Group / Class</th>
+            <th>Branch</th>
+            <th>Level</th>
             <th>Status</th>
             <th class="text-right">Actions</th>
           </tr>
@@ -81,6 +100,20 @@ include __DIR__ . '/_header.php';
             <td>
               <?php if ($m['group_name']): ?>
                 <span class="badge badge-gray"><?= e($m['group_name']) ?></span>
+              <?php else: ?>
+                —
+              <?php endif; ?>
+            </td>
+            <td>
+              <?php if ($m['branch_name']): ?>
+                <span class="badge badge-blue"><?= e($m['branch_name']) ?></span>
+              <?php else: ?>
+                —
+              <?php endif; ?>
+            </td>
+            <td>
+              <?php if ($m['level_name']): ?>
+                <span class="badge badge-purple"><?= e($m['level_name']) ?></span>
               <?php else: ?>
                 —
               <?php endif; ?>
@@ -100,7 +133,7 @@ include __DIR__ . '/_header.php';
             </td>
           </tr>
           <?php endforeach; if (empty($members)): ?>
-          <tr><td colspan="5" class="text-center" style="padding:40px;color:var(--text2)">No members found. Add one above.</td></tr>
+          <tr><td colspan="7" class="text-center" style="padding:40px;color:var(--text2)">No members found. Add one above.</td></tr>
           <?php endif; ?>
         </tbody>
       </table>
@@ -130,6 +163,33 @@ include __DIR__ . '/_header.php';
       <div class="form-group">
         <label class="form-label">Group / Class (Optional)</label>
         <input class="form-input" type="text" name="group_name" id="m_group" placeholder="e.g. Group 1">
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Branch (Optional)</label>
+          <select class="form-select" name="branch_id" id="m_branch">
+            <option value="">— None —</option>
+            <?php foreach ($branches as $b): ?>
+              <option value="<?= $b['id'] ?>"><?= e($b['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <?php if (empty($branches)): ?>
+            <small style="color:var(--text3)"><a href="branches.php" style="color:var(--blue)">Add branches first →</a></small>
+          <?php endif; ?>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Level (Optional)</label>
+          <select class="form-select" name="level_id" id="m_level">
+            <option value="">— None —</option>
+            <?php foreach ($levels as $l): ?>
+              <option value="<?= $l['id'] ?>"><?= e($l['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <?php if (empty($levels)): ?>
+            <small style="color:var(--text3)"><a href="branches.php" style="color:var(--blue)">Add levels first →</a></small>
+          <?php endif; ?>
+        </div>
       </div>
       
       <div class="form-group toggle-wrap" style="border:none;padding-bottom:0">
@@ -163,6 +223,8 @@ function openModal() {
     document.getElementById('m_name').value = '';
     document.getElementById('m_ename').value = '';
     document.getElementById('m_group').value = '';
+    document.getElementById('m_branch').value = '';
+    document.getElementById('m_level').value = '';
     activeCheck.checked = true;
     toggleWrap.classList.add('on');
     modal.style.display = 'flex';
@@ -174,6 +236,8 @@ function editModal(data) {
     document.getElementById('m_name').value = data.name;
     document.getElementById('m_ename').value = data.english_name || '';
     document.getElementById('m_group').value = data.group_name || '';
+    document.getElementById('m_branch').value = data.branch_id || '';
+    document.getElementById('m_level').value = data.level_id || '';
     
     activeCheck.checked = !!data.is_active;
     if (activeCheck.checked) toggleWrap.classList.add('on');

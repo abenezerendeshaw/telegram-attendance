@@ -381,6 +381,8 @@ export default function App() {
                           >
                             <span style={{ fontWeight: "600" }}>{st.name}</span>
                             <span style={styles.groupSubTag}>{st.group}</span>
+                            {st.branch && <span style={styles.branchSubTag}>{st.branch}</span>}
+                            {st.level && <span style={styles.levelSubTag}>{st.level}</span>}
                           </li>
                         ))
                       ) : (
@@ -392,7 +394,11 @@ export default function App() {
               </div>
 
               {selectedStudent && (
-                <div style={styles.groupBadge}>📍 <strong>ቡድን:</strong> {selectedStudent.group}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 16 }}>
+                  <div style={styles.groupBadge}>📍 <strong>ቡድን:</strong> {selectedStudent.group}</div>
+                  {selectedStudent.branch && <div style={styles.branchBadge}>🏢 <strong>ቅርንጫፍ:</strong> {selectedStudent.branch}</div>}
+                  {selectedStudent.level && <div style={styles.levelBadge}>🎓 <strong>ደረጃ:</strong> {selectedStudent.level}</div>}
+                </div>
               )}
 
               <div style={styles.inputGroup}>
@@ -687,6 +693,20 @@ const styles = {
     padding: "2px 6px",
     borderRadius: "4px",
   },
+  branchSubTag: {
+    fontSize: "11px",
+    color: "#93c5fd",
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    padding: "2px 6px",
+    borderRadius: "4px",
+  },
+  levelSubTag: {
+    fontSize: "11px",
+    color: "#d8b4fe",
+    backgroundColor: "rgba(168, 85, 247, 0.15)",
+    padding: "2px 6px",
+    borderRadius: "4px",
+  },
   noResultItem: {
     padding: "12px 14px",
     fontSize: "13px",
@@ -700,6 +720,22 @@ const styles = {
     padding: "10px 14px",
     fontSize: "13px",
     color: "#fbbf24",
+  },
+  branchBadge: {
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    border: "1px solid rgba(59, 130, 246, 0.4)",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    fontSize: "13px",
+    color: "#93c5fd",
+  },
+  levelBadge: {
+    backgroundColor: "rgba(168, 85, 247, 0.15)",
+    border: "1px solid rgba(168, 85, 247, 0.4)",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    fontSize: "13px",
+    color: "#d8b4fe",
   },
   select: {
     width: "100%",

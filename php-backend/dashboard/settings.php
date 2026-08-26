@@ -55,6 +55,53 @@ if (is_post()) {
         flash_set('success', 'Profile updated successfully.');
         redirect('settings.php');
     }
+
+    // ── Password change ─────────────────────────────────────────────────
+    if (isset($_POST['change_password'])) {
+        $current   = $_POST['current_password'] ?? '';
+        $newPass   = $_POST['new_password'] ?? '';
+        $confirm   = $_POST['confirm_password'] ?? '';
+        $newEmail  = trim($_POST['email'] ?? $company['email']);
+        $newUser   = trim(strtolower($_POST['username'] ?? $company['username']));
+
+        // Validate username uniqueness (if changed)
+        if ($newUser !== $company['username']) {
+            if (!preg_match('/^[a-z0-9_-]{3,30}$/', $newUser)) {
+                flash_set('error', 'Username must be 3–30 characters: lowercase letters, numbers, - or _ only.');
+                redirect('settings.php#password');
+            }
+            $chk = db()->prepare('SELECT id FROM companies WHERE username = ? AND id != ? LIMIT 1');
+            $chk->execute([$newUser, $company['id']]);
+            if ($chk->fetch()) {
+                flash_set('error', 'This username is already taken.');
+                redirect('settings.php#password');
+            }
+        }
+
+        if ($newPass !== '' || $newUser !== $company['username'] || $newEmail !== ($company['email'] ?? '')) {
+            if (!password_verify($current, $company['password_hash'])) {
+                flash_set('error', 'Current password is incorrect.');
+                redirect('settings.php#password');
+            }
+            if ($newPass !== '') {
+                if (strlen($newPass) < 8) {
+                    flash_set('error', 'New password must be at least 8 characters.');
+                    redirect('settings.php#password');
+                }
+                if ($newPass !== $confirm) {
+                    flash_set('error', 'New passwords do not match.');
+                    redirect('settings.php#password');
+                }
+            }
+
+            $hash = $newPass !== '' ? hash_password($newPass) : $company['password_hash'];
+            $stmt = db()->prepare('UPDATE companies SET password_hash = ?, username = ?, email = ? WHERE id = ?');
+            $stmt->execute([$hash, $newUser, $newEmail ?: null, $company['id']]);
+            $_SESSION['company_slug'] = $company['slug'];
+            flash_set('success', 'Account settings updated successfully.');
+            redirect('settings.php#password');
+        }
+    }
 }
 include __DIR__ . '/_header.php';
 ?>
@@ -121,6 +168,45 @@ include __DIR__ . '/_header.php';
       <div class="divider"></div>
       
       <button type="submit" class="btn btn-primary">Save Profile Settings</button>
+    </form>
+  </div>
+
+  <div class="card" style="max-width:800px" id="password">
+    <h2 class="card-title mb-4">Account & Password</h2>
+    <form method="POST">
+      <input type="hidden" name="change_password" value="1">
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Username (Login)</label>
+          <input class="form-input" type="text" name="username" value="<?= e($company['username']) ?>" pattern="[a-z0-9_-]{3,30}" title="Lowercase letters, numbers, hyphens and underscores only (3–30 chars)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address (Optional)</label>
+          <input class="form-input" type="email" name="email" value="<?= e($company['email'] ?? '') ?>">
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="form-group">
+        <label class="form-label">Current Password *</label>
+        <input class="form-input" type="password" name="current_password" autocomplete="current-password">
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">New Password (min 8 chars)</label>
+          <input class="form-input" type="password" name="new_password" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Confirm New Password</label>
+          <input class="form-input" type="password" name="confirm_password" autocomplete="new-password">
+        </div>
+      </div>
+      <p style="color:var(--text2);font-size:0.85rem;margin:8px 0 16px">Leave new password fields empty to keep your current password. Current password is required to save username/email changes.</p>
+
+      <button type="submit" class="btn btn-primary">Update Account & Password</button>
     </form>
   </div>
 </div>

@@ -53,6 +53,8 @@ include __DIR__ . '/_header.php';
             <th>Time</th>
             <th>Name</th>
             <th>Group</th>
+            <th>Branch</th>
+            <th>Level</th>
             <th>Status</th>
             <th>Reason / GPS</th>
           </tr>
@@ -66,6 +68,8 @@ include __DIR__ . '/_header.php';
             </td>
             <td style="font-weight:600"><?= e($r['member_name']) ?></td>
             <td><?= e($r['group_name'] ?: '—') ?></td>
+            <td><?= e($r['branch_name'] ?: '—') ?></td>
+            <td><?= e($r['level_name'] ?: '—') ?></td>
             <td>
               <span class="badge badge-<?= $r['status'] === 'present' ? 'green' : 'amber' ?>">
                 <?= $r['status'] === 'present' ? '✅ Present' : '📝 Permission' ?>
@@ -85,7 +89,7 @@ include __DIR__ . '/_header.php';
             </td>
           </tr>
           <?php endforeach; if (empty($records)): ?>
-          <tr><td colspan="5" class="text-center" style="padding:40px;color:var(--text2)">No attendance recorded for this date.</td></tr>
+          <tr><td colspan="7" class="text-center" style="padding:40px;color:var(--text2)">No attendance recorded for this date.</td></tr>
           <?php endif; ?>
         </tbody>
       </table>

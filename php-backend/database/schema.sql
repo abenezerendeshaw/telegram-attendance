@@ -70,6 +70,8 @@ CREATE TABLE members (
   name          VARCHAR(255) NOT NULL,
   english_name  VARCHAR(255) DEFAULT NULL,
   group_name    VARCHAR(100) DEFAULT NULL,
+  branch_id     INT          DEFAULT NULL,
+  level_id      INT          DEFAULT NULL,
   member_type   ENUM('student','employee') DEFAULT 'student',
   is_active     TINYINT(1)   DEFAULT 1,
   created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
@@ -84,6 +86,8 @@ CREATE TABLE attendance_records (
   member_id         INT           DEFAULT NULL,
   member_name       VARCHAR(255)  NOT NULL,
   group_name        VARCHAR(100)  DEFAULT NULL,
+  branch_name       VARCHAR(255)  DEFAULT NULL,
+  level_name        VARCHAR(255)  DEFAULT NULL,
   status            ENUM('present','permission') NOT NULL,
   reason            TEXT          DEFAULT NULL,
   latitude          DECIMAL(12,8) DEFAULT NULL,
@@ -109,6 +113,32 @@ CREATE TABLE receipt_uploads (
   INDEX idx_company (company_id),
   FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── Branches ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS branches (
+  id            INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  company_id    INT          NOT NULL,
+  name          VARCHAR(255) NOT NULL,
+  created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_branch_company (company_id),
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ── Levels ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS levels (
+  id            INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  company_id    INT          NOT NULL,
+  name          VARCHAR(255) NOT NULL,
+  created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_level_company (company_id),
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ⚠️  If upgrading an EXISTING database, run these ALTER statements:
+-- ALTER TABLE members ADD COLUMN branch_id   INT DEFAULT NULL AFTER group_name;
+-- ALTER TABLE members ADD COLUMN level_id    INT DEFAULT NULL AFTER branch_id;
+-- ALTER TABLE attendance_records ADD COLUMN branch_name VARCHAR(255) DEFAULT NULL AFTER group_name;
+-- ALTER TABLE attendance_records ADD COLUMN level_name  VARCHAR(255) DEFAULT NULL AFTER branch_name;
 
 -- ── Dashboard Sessions ───────────────────────────────────────
 CREATE TABLE company_sessions (

@@ -255,6 +255,7 @@ tbody td { padding: 13px 16px; font-size: 0.875rem; color: var(--text); }
 .badge-red    { background: rgba(239,68,68,0.15);   color: var(--red); }
 .badge-amber  { background: var(--accent-dim);      color: var(--accent); }
 .badge-blue   { background: rgba(59,130,246,0.15);  color: var(--blue); }
+.badge-purple { background: rgba(168,85,247,0.15);  color: #a855f7; }
 .badge-gray   { background: rgba(255,255,255,0.06); color: var(--text2); }
 
 /* ── Alerts ──────────────────────────────────────────────────────────── */

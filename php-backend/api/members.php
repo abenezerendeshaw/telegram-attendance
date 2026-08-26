@@ -14,10 +14,13 @@ $company = get_company_by_slug($slug);
 if (!$company) json_out(['error' => 'Company not found'], 404);
 
 $stmt = db()->prepare(
-    'SELECT id, name, english_name, group_name, member_type
-     FROM members
-     WHERE company_id = ? AND is_active = 1
-     ORDER BY group_name, name'
+    'SELECT m.id, m.name, m.english_name, m.group_name, m.member_type,
+            b.name AS branch_name, l.name AS level_name
+     FROM members m
+     LEFT JOIN branches b ON b.id = m.branch_id
+     LEFT JOIN levels l ON l.id = m.level_id
+     WHERE m.company_id = ? AND m.is_active = 1
+     ORDER BY m.group_name, m.name'
 );
 $stmt->execute([$company['id']]);
 $rows = $stmt->fetchAll();
@@ -28,6 +31,8 @@ $members = array_map(fn($r) => [
     'name'        => $r['name'],
     'englishName' => $r['english_name'] ?? '',
     'group'       => $r['group_name'] ?? '',
+    'branch'      => $r['branch_name'] ?? '',
+    'level'       => $r['level_name'] ?? '',
 ], $rows);
 
 json_out(['members' => $members]);

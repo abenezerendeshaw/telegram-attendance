@@ -66,7 +66,13 @@ function run_daily_report(array $company): array {
     $records = $stmt->fetchAll();
 
     // Get all active members
-    $stmt = db()->prepare('SELECT * FROM members WHERE company_id = ? AND is_active = 1');
+    $stmt = db()->prepare(
+        'SELECT m.*, b.name AS branch_name, l.name AS level_name
+         FROM members m
+         LEFT JOIN branches b ON b.id = m.branch_id
+         LEFT JOIN levels l ON l.id = m.level_id
+         WHERE m.company_id = ? AND m.is_active = 1'
+    );
     $stmt->execute([$company['id']]);
     $members = $stmt->fetchAll();
     $total   = count($members);
@@ -90,7 +96,9 @@ function run_daily_report(array $company): array {
         $key = mb_strtolower(trim($m['name']));
         if (!isset($presentNames[$key]) && !isset($permissionNames[$key])) {
             $label = $m['english_name'] ? "{$m['name']} ({$m['english_name']})" : $m['name'];
-            $absentList[] = $label . ' — ' . ($m['group_name'] ?? '');
+            $absentList[] = $label . ' — ' . ($m['group_name'] ?? '')
+                . ($m['branch_name'] ? " | 🏢 {$m['branch_name']}" : '')
+                . ($m['level_name'] ? " | 🎓 {$m['level_name']}" : '');
         }
     }
 
