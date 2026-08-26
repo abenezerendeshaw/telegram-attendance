@@ -101,7 +101,7 @@ include __DIR__ . '/_header.php';
           <label class="form-label">Logo (Square recommended, max 2MB)</label>
           <?php if (!empty($company['logo_path'])): ?>
             <div style="margin-bottom:10px">
-              <img src="/uploads/logos/<?= e(basename($company['logo_path'])) ?>" alt="Logo" style="width:80px;height:80px;object-fit:cover;border-radius:12px;border:1px solid var(--border)">
+              <img src="<?= BASE_PATH ?>/uploads/logos/<?= e(basename($company['logo_path'])) ?>" alt="Logo" style="width:80px;height:80px;object-fit:cover;border-radius:12px;border:1px solid var(--border)">
             </div>
           <?php endif; ?>
           <input class="form-input" type="file" name="logo" accept="image/*">
@@ -111,7 +111,7 @@ include __DIR__ . '/_header.php';
           <label class="form-label">Cover Image (Shown at top of app, max 5MB)</label>
           <?php if (!empty($company['cover_image'])): ?>
             <div style="margin-bottom:10px">
-              <img src="/uploads/covers/<?= e(basename($company['cover_image'])) ?>" alt="Cover" style="width:100%;height:80px;object-fit:cover;border-radius:12px;border:1px solid var(--border)">
+              <img src="<?= BASE_PATH ?>/uploads/covers/<?= e(basename($company['cover_image'])) ?>" alt="Cover" style="width:100%;height:80px;object-fit:cover;border-radius:12px;border:1px solid var(--border)">
             </div>
           <?php endif; ?>
           <input class="form-input" type="file" name="cover" accept="image/*">

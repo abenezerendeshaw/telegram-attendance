@@ -64,7 +64,7 @@ include __DIR__ . '/_header.php';
             <td style="font-weight:600"><?= e($r['payer_name']) ?></td>
             <td><?= e($r['student_name']) ?></td>
             <td>
-              <a href="/uploads/receipts/<?= e($r['file_path']) ?>" target="_blank" class="btn btn-secondary btn-sm">
+              <a href="<?= BASE_PATH ?>/uploads/receipts/<?= e($r['file_path']) ?>" target="_blank" class="btn btn-secondary btn-sm">
                 View Receipt
               </a>
             </td>

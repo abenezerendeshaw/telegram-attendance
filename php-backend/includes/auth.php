@@ -24,23 +24,23 @@ function start_session(): void {
 function require_auth(): array {
     start_session();
     if (empty($_SESSION['company_id'])) {
-        header('Location: /login.php');
+        header('Location: ' . BASE_PATH . '/login.php');
         exit;
     }
     $company = get_company_by_id((int) $_SESSION['company_id']);
     if (!$company || !$company['is_active']) {
         session_destroy();
-        header('Location: /login.php?err=suspended');
+        header('Location: ' . BASE_PATH . '/login.php?err=suspended');
         exit;
     }
     return $company;
 }
 
-// ── Login: verify email + password, set session ──────────────────────────
-function login_company(string $email, string $password): bool {
+// ── Login: verify username + password, set session
+function login_company(string $username, string $password): bool {
     start_session();
-    $stmt = db()->prepare('SELECT * FROM companies WHERE email = ? AND is_active = 1 LIMIT 1');
-    $stmt->execute([strtolower(trim($email))]);
+    $stmt = db()->prepare('SELECT * FROM companies WHERE username = ? AND is_active = 1 LIMIT 1');
+    $stmt->execute([trim($username)]);
     $company = $stmt->fetch();
     if (!$company) return false;
     if (!password_verify($password, $company['password_hash'])) return false;
@@ -52,8 +52,43 @@ function login_company(string $email, string $password): bool {
 // ── Logout ────────────────────────────────────────────────────────────────
 function logout_company(): void {
     start_session();
-    session_unset();
-    session_destroy();
+    unset($_SESSION['company_id']);
+    unset($_SESSION['company_slug']);
+}
+
+// ── Super Admin Login ─────────────────────────────────────────────────────
+function login_superadmin(string $username, string $password): bool {
+    start_session();
+    $stmt = db()->prepare('SELECT * FROM super_admin WHERE username = ? LIMIT 1');
+    $stmt->execute([trim($username)]);
+    $admin = $stmt->fetch();
+    if (!$admin) return false;
+    if (!password_verify($password, $admin['password_hash'])) return false;
+    $_SESSION['super_admin_id'] = $admin['id'];
+    return true;
+}
+
+// ── Require Super Admin Auth ──────────────────────────────────────────────
+function require_super_admin(): array {
+    start_session();
+    if (empty($_SESSION['super_admin_id'])) {
+        header('Location: ' . BASE_PATH . '/super-admin/login.php');
+        exit;
+    }
+    $stmt = db()->prepare('SELECT * FROM super_admin WHERE id = ?');
+    $stmt->execute([(int) $_SESSION['super_admin_id']]);
+    $admin = $stmt->fetch();
+    if (!$admin) {
+        unset($_SESSION['super_admin_id']);
+        header('Location: ' . BASE_PATH . '/super-admin/login.php');
+        exit;
+    }
+    return $admin;
+}
+
+function logout_superadmin(): void {
+    start_session();
+    unset($_SESSION['super_admin_id']);
 }
 
 // ── Super admin auth ─────────────────────────────────────────────────────

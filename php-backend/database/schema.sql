@@ -5,7 +5,8 @@ CREATE TABLE companies (
   id             INT          NOT NULL AUTO_INCREMENT PRIMARY KEY,
   name           VARCHAR(255) NOT NULL,
   slug           VARCHAR(100) NOT NULL UNIQUE,
-  email          VARCHAR(255) NOT NULL UNIQUE,
+  username       VARCHAR(100) NOT NULL UNIQUE,       -- used for login
+  email          VARCHAR(255) DEFAULT NULL,          -- optional, for notifications
   password_hash  VARCHAR(255) NOT NULL,
   logo_path      VARCHAR(500) DEFAULT NULL,
   cover_image    VARCHAR(500) DEFAULT NULL,
@@ -16,6 +17,11 @@ CREATE TABLE companies (
   is_active      TINYINT(1)   DEFAULT 1,
   created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ⚠️  If upgrading an EXISTING database, run this instead of re-importing:
+-- ALTER TABLE companies
+--   ADD COLUMN username VARCHAR(100) UNIQUE AFTER slug,
+--   MODIFY COLUMN email VARCHAR(255) DEFAULT NULL;
 
 -- ── Company Settings ─────────────────────────────────────────
 CREATE TABLE company_settings (
@@ -122,8 +128,11 @@ CREATE TABLE super_admin (
   created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Default super admin (password: Admin@SpecificEt2024  — CHANGE IMMEDIATELY)
+-- Default super admin credentials:
+--   Username : superadmin
+--   Password : Admin@SpecificEt2024
+--   ⚠️  CHANGE THIS PASSWORD immediately after first login!
 INSERT INTO super_admin (username, password_hash) VALUES (
   'superadmin',
-  '$2y$12$LkRxG8z5QpNHfmz2WVb5fuP7gK4nFJT9rDhWuXFN8JlJ6X3VzDHwC'
+  '$2y$12$sBZ9QHp6hDznw0rjL460GeEnydg6jbZdmhfjWTGF8RirA8UHAk..m'
 );

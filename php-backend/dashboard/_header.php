@@ -7,7 +7,7 @@ $currentPath = basename($_SERVER['PHP_SELF']);
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($pageTitle ?? 'Dashboard') ?> — Specific Ethiopian</title>
-<link rel="stylesheet" href="/assets/css/dashboard.css">
+<link rel="stylesheet" href="<?= BASE_PATH ?>/assets/css/dashboard.css">
 </head>
 <body>
 <div class="layout">
@@ -15,7 +15,7 @@ $currentPath = basename($_SERVER['PHP_SELF']);
     <div class="sidebar-logo">
       <div style="display:flex;align-items:center;gap:12px">
         <?php if (!empty($company['logo_path'])): ?>
-          <img src="/uploads/logos/<?= e(basename($company['logo_path'])) ?>" alt="Logo">
+          <img src="<?= BASE_PATH ?>/uploads/logos/<?= e(basename($company['logo_path'])) ?>" alt="Logo">
         <?php else: ?>
           <div style="width:48px;height:48px;border-radius:10px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:24px">🏢</div>
         <?php endif; ?>
@@ -65,7 +65,7 @@ $currentPath = basename($_SERVER['PHP_SELF']);
     </nav>
     
     <div class="sidebar-footer">
-      <a href="/logout.php" class="logout-btn">
+      <a href="<?= BASE_PATH ?>/logout.php" class="logout-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
         Sign Out
       </a>

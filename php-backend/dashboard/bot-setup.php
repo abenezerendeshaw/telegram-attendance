@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/auth.php';
 
@@ -128,13 +128,14 @@ include __DIR__ . '/_header.php';
 </div>
 
 <script>
+const BASE_PATH = '<?= BASE_PATH ?>';
 function registerWebhook(type) {
     const btn = document.getElementById('btn-reg-' + type);
     const res = document.getElementById('res-' + type);
     btn.disabled = true;
     btn.innerText = 'Registering...';
     
-    fetch('/api/register-webhook.php', {
+    fetch(BASE_PATH + '/api/register-webhook.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bot: type })
@@ -159,3 +160,4 @@ function registerWebhook(type) {
 </script>
 
 <?php include __DIR__ . '/_footer.php'; ?>
+

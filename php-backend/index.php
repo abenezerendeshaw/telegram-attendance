@@ -11,7 +11,7 @@ $count = $stmt->fetchColumn() ?: 0;
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Specific Ethiopian — Smart Telegram Attendance System</title>
 <meta name="description" content="A powerful multi-tenant attendance management system for Ethiopian schools and organizations using Telegram bots.">
-<link rel="stylesheet" href="/assets/css/public.css">
+<link rel="stylesheet" href="<?= BASE_PATH ?>/assets/css/public.css">
 </head>
 <body>
 <div class="landing-wrap">
@@ -22,8 +22,8 @@ $count = $stmt->fetchColumn() ?: 0;
     <br>For schools &amp; organizations — instant Telegram bot, daily reports, GPS verification.
   </p>
   <div class="landing-cta">
-    <a href="/register.php" class="cta-primary">🚀 Register Your Organization</a>
-    <a href="/login.php"    class="cta-secondary">Sign In →</a>
+    <a href="<?= BASE_PATH ?>/register.php" class="cta-primary">🚀 Register Your Organization</a>
+    <a href="<?= BASE_PATH ?>/login.php"    class="cta-secondary">Sign In →</a>
   </div>
 
   <?php if ($count > 0): ?>
