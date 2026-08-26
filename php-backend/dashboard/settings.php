@@ -124,12 +124,12 @@ include __DIR__ . '/_header.php';
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
               <input type="checkbox" name="member_types[]" value="student" style="accent-color:var(--accent)"
-                <?= in_array('student', [$company['member_type']]) ? 'checked' : '' ?>>
+                <?= ($company['member_type'] === 'student' || $company['member_type'] === 'both') ? 'checked' : '' ?>>
               🎓 Students / ተማሪዎች
             </label>
             <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
               <input type="checkbox" name="member_types[]" value="employee" style="accent-color:var(--accent)"
-                <?= in_array('employee', [$company['member_type']]) ? 'checked' : '' ?>>
+                <?= ($company['member_type'] === 'employee' || $company['member_type'] === 'both') ? 'checked' : '' ?>>
               👔 Employees / ሰራተኞች
             </label>
           </div>
