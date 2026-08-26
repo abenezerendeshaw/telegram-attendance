@@ -30,245 +30,69 @@ $allLevelNames = array_values(array_unique(array_filter(array_merge(
 ))));
 sort($allLevelNames);
 
-// ── Excel / CSV Export Handler ──────────────────────────────────────
+// ── Excel Export Handler (ሙሉ ስም | ቡድን | ሁኔታ | ቀን | ሰዓት) ──────────────────
 if (isset($_GET['export'])) {
-    $exportType = $_GET['export']; // 'list', 'excel', or 'csv'
-    $slugName   = slugify($company['name']);
+    $slugName = slugify($company['name']);
 
-    // ── Mode 1: Log List Export (ሙሉ ስም | ቡድን | ሁኔታ | ቀን | ሰዓት) ──────────
-    if ($exportType === 'list') {
-        $sql = 'SELECT ar.*, m.level_id, l.name as level_name 
-                FROM attendance_records ar
-                LEFT JOIN members m ON ar.member_id = m.id
-                LEFT JOIN levels l ON m.level_id = l.id
-                WHERE ar.company_id = ?';
-        $params = [$company['id']];
+    $sql = 'SELECT ar.*, m.level_id, l.name as level_name 
+            FROM attendance_records ar
+            LEFT JOIN members m ON ar.member_id = m.id
+            LEFT JOIN levels l ON m.level_id = l.id
+            WHERE ar.company_id = ?';
+    $params = [$company['id']];
 
-        if ($levelFilter !== 'all' && $levelFilter !== '') {
-            $sql .= ' AND (ar.level_name = ? OR l.name = ?)';
-            $params[] = $levelFilter;
-            $params[] = $levelFilter;
-        }
-
-        if (!empty($dateFilter) && $dateFilter !== 'all') {
-            $sql .= ' AND ar.eth_date = ?';
-            $params[] = $dateFilter;
-        }
-
-        $sql .= ' ORDER BY ar.submitted_at DESC';
-
-        $stmt = db()->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll();
-
-        $fileName = 'Attendance_Log_' . $slugName . '_' . date('Y-m-d') . '.xls';
-        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
-        header("Content-Disposition: attachment; filename=\"{$fileName}\"");
-        header('Cache-Control: max-age=0');
-
-        echo '<!DOCTYPE html><html><head><meta charset="utf-8">';
-        echo '<style>';
-        echo 'table { border-collapse: collapse; font-family: sans-serif; font-size: 13px; width: 100%; }';
-        echo 'th { background-color: #d97706; color: #ffffff; padding: 10px; border: 1px solid #b45309; text-align: left; }';
-        echo 'td { padding: 8px; border: 1px solid #e5e0d6; text-align: left; }';
-        echo '.present { color: #16a34a; font-weight: bold; }';
-        echo '.perm { color: #d97706; font-weight: bold; }';
-        echo '</style></head><body>';
-        echo '<h2>' . htmlspecialchars($company['name']) . ' — Attendance Log / አቴንዳንስ ሎግ</h2>';
-        echo '<p>Level: <strong>' . htmlspecialchars($levelFilter === 'all' ? 'All Levels' : $levelFilter) . '</strong> | Date: <strong>' . htmlspecialchars($dateFilter) . '</strong></p>';
-        echo '<table border="1"><thead><tr>';
-        echo '<th>ሙሉ ስም</th><th>ቡድን</th><th>ሁኔታ</th><th>ቀን</th><th>ሰዓት</th>';
-        echo '</tr></thead><tbody>';
-
-        foreach ($rows as $r) {
-            $stLabel = $r['status'] === 'present' ? 'የተገኘ' : 'ፈቃድ';
-            $stClass = $r['status'] === 'present' ? 'present' : 'perm';
-            $timeVal = $r['eth_time'] ?: date('H:i:s', strtotime($r['submitted_at']));
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($r['member_name']) . '</td>';
-            echo '<td>' . htmlspecialchars($r['group_name'] ?: '—') . '</td>';
-            echo '<td class="' . $stClass . '">' . htmlspecialchars($stLabel) . '</td>';
-            echo '<td>' . htmlspecialchars($r['eth_date']) . '</td>';
-            echo '<td>' . htmlspecialchars($timeVal) . '</td>';
-            echo '</tr>';
-        }
-
-        echo '</tbody></table></body></html>';
-        exit;
-    }
-
-    // ── Mode 2 & 3: Matrix Grid Export (Person vs Dates with ✓ / ✗ / P) ──
-    // 1. Fetch all distinct dates for this company
-    $stmt = db()->prepare('SELECT DISTINCT eth_date FROM attendance_records WHERE company_id = ? ORDER BY eth_date ASC');
-    $stmt->execute([$company['id']]);
-    $distinctDates = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-    // 2. Fetch members for the company (filtered by level if specified)
     if ($levelFilter !== 'all' && $levelFilter !== '') {
-        $stmt = db()->prepare(
-            'SELECT m.id, m.name, m.group_name, l.name as level_name
-             FROM members m
-             LEFT JOIN levels l ON m.level_id = l.id
-             WHERE m.company_id = ? AND m.is_active = 1 AND (l.name = ? OR m.level_id IN (SELECT id FROM levels WHERE name = ?))
-             ORDER BY m.group_name, m.name'
-        );
-        $stmt->execute([$company['id'], $levelFilter, $levelFilter]);
-    } else {
-        $stmt = db()->prepare(
-            'SELECT m.id, m.name, m.group_name, l.name as level_name
-             FROM members m
-             LEFT JOIN levels l ON m.level_id = l.id
-             WHERE m.company_id = ? AND m.is_active = 1
-             ORDER BY l.name, m.group_name, m.name'
-        );
-        $stmt->execute([$company['id']]);
-    }
-    $membersList = $stmt->fetchAll();
-
-    // 3. Fetch all attendance records for these members & dates
-    $stmt = db()->prepare('SELECT member_id, member_name, status, eth_date FROM attendance_records WHERE company_id = ?');
-    $stmt->execute([$company['id']]);
-    $allAtt = $stmt->fetchAll();
-
-    $normName = function($str) {
-        $str = preg_replace('/\s*\(.*?\)\s*/', '', $str ?? '');
-        $str = preg_replace('/\s+/', ' ', $str);
-        return mb_strtolower(trim($str));
-    };
-
-    $attMapById   = [];
-    $attMapByName = [];
-    foreach ($allAtt as $a) {
-        $date = $a['eth_date'];
-        $st   = $a['status'];
-
-        if (!empty($a['member_id'])) {
-            $attMapById[(int)$a['member_id']][$date] = $st;
-        }
-
-        $nKey = $normName($a['member_name']);
-        if ($nKey !== '') {
-            $attMapByName[$nKey][$date] = $st;
-        }
+        $sql .= ' AND (ar.level_name = ? OR l.name = ?)';
+        $params[] = $levelFilter;
+        $params[] = $levelFilter;
     }
 
-    if ($exportType === 'csv') {
-        // Output UTF-8 BOM CSV
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="Attendance_Matrix_' . $slugName . '_' . date('Y-m-d') . '.csv"');
-        
-        $output = fopen('php://output', 'w');
-        // Add UTF-8 BOM for Excel compatibility
-        fwrite($output, "\xEF\xBB\xBF");
-
-        // Header Row
-        $header = ['ሙሉ ስም', 'ቡድን', 'ደረጃ (Level)'];
-        foreach ($distinctDates as $d) {
-            $header[] = $d;
-        }
-        $header[] = 'Total Present (✓)';
-        $header[] = 'Total Permission (P)';
-        $header[] = 'Total Absent (✗)';
-        $header[] = 'Attendance Rate';
-        fputcsv($output, $header);
-
-        // Data Rows
-        foreach ($membersList as $m) {
-            $mId   = (int)$m['id'];
-            $mNorm = $normName($m['name']);
-            $pCount = 0; $permCount = 0; $aCount = 0;
-            $row = [$m['name'], $m['group_name'] ?: '—', $m['level_name'] ?: '—'];
-
-            foreach ($distinctDates as $d) {
-                $st = $attMapById[$mId][$d] ?? $attMapByName[$mNorm][$d] ?? null;
-                if ($st === 'present') {
-                    $row[] = '✓';
-                    $pCount++;
-                } elseif ($st === 'permission') {
-                    $row[] = 'P';
-                    $permCount++;
-                } else {
-                    $row[] = '✗';
-                    $aCount++;
-                }
-            }
-
-            $totalDays = count($distinctDates);
-            $rate = $totalDays > 0 ? round(($pCount / $totalDays) * 100) . '%' : '0%';
-            
-            $row[] = $pCount;
-            $row[] = $permCount;
-            $row[] = $aCount;
-            $row[] = $rate;
-
-            fputcsv($output, $row);
-        }
-
-        fclose($output);
-        exit;
-    } else {
-        // Output Styled HTML Spreadsheet (.xls) Matrix
-        $fileName = 'Attendance_Matrix_' . $slugName . '_' . date('Y-m-d') . '.xls';
-        header('Content-Type: application/vnd.ms-excel; charset=utf-8');
-        header("Content-Disposition: attachment; filename=\"{$fileName}\"");
-        header('Cache-Control: max-age=0');
-
-        echo '<!DOCTYPE html><html><head><meta charset="utf-8">';
-        echo '<style>';
-        echo 'table { border-collapse: collapse; font-family: sans-serif; font-size: 13px; width: 100%; }';
-        echo 'th { background-color: #d97706; color: #ffffff; padding: 10px; border: 1px solid #b45309; text-align: center; }';
-        echo 'td { padding: 8px; border: 1px solid #e5e0d6; text-align: center; }';
-        echo 'td.name { text-align: left; font-weight: bold; }';
-        echo '.present { color: #16a34a; font-weight: bold; font-size: 16px; }';
-        echo '.perm { color: #d97706; font-weight: bold; }';
-        echo '.absent { color: #dc2626; font-weight: bold; font-size: 16px; }';
-        echo '</style></head><body>';
-        echo '<h2>' . htmlspecialchars($company['name']) . ' — Attendance Matrix Report</h2>';
-        echo '<p>Level Filter: <strong>' . htmlspecialchars($levelFilter === 'all' ? 'All Levels' : $levelFilter) . '</strong> | Generated: ' . date('Y-m-d H:i') . '</p>';
-        echo '<table border="1"><thead><tr>';
-        echo '<th>ሙሉ ስም</th><th>ቡድን</th><th>ደረጃ (Level)</th>';
-        foreach ($distinctDates as $d) {
-            echo '<th>' . htmlspecialchars($d) . '</th>';
-        }
-        echo '<th>Present (✓)</th><th>Permission (P)</th><th>Absent (✗)</th><th>Attendance Rate</th>';
-        echo '</tr></thead><tbody>';
-
-        foreach ($membersList as $m) {
-            $mId   = (int)$m['id'];
-            $mNorm = $normName($m['name']);
-            $pCount = 0; $permCount = 0; $aCount = 0;
-            echo '<tr>';
-            echo '<td class="name">' . htmlspecialchars($m['name']) . '</td>';
-            echo '<td>' . htmlspecialchars($m['group_name'] ?: '—') . '</td>';
-            echo '<td>' . htmlspecialchars($m['level_name'] ?: '—') . '</td>';
-
-            foreach ($distinctDates as $d) {
-                $st = $attMapById[$mId][$d] ?? $attMapByName[$mNorm][$d] ?? null;
-                if ($st === 'present') {
-                    echo '<td class="present">✓</td>';
-                    $pCount++;
-                } elseif ($st === 'permission') {
-                    echo '<td class="perm">P</td>';
-                    $permCount++;
-                } else {
-                    echo '<td class="absent">✗</td>';
-                    $aCount++;
-                }
-            }
-
-            $totalDays = count($distinctDates);
-            $rate = $totalDays > 0 ? round(($pCount / $totalDays) * 100) . '%' : '0%';
-
-            echo '<td>' . $pCount . '</td>';
-            echo '<td>' . $permCount . '</td>';
-            echo '<td>' . $aCount . '</td>';
-            echo '<td><strong>' . $rate . '</strong></td>';
-            echo '</tr>';
-        }
-
-        echo '</tbody></table></body></html>';
-        exit;
+    if (!empty($dateFilter) && $dateFilter !== 'all') {
+        $sql .= ' AND ar.eth_date = ?';
+        $params[] = $dateFilter;
     }
+
+    $sql .= ' ORDER BY ar.submitted_at DESC';
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+
+    $fileName = 'Attendance_Log_' . $slugName . '_' . date('Y-m-d') . '.xls';
+    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    header("Content-Disposition: attachment; filename=\"{$fileName}\"");
+    header('Cache-Control: max-age=0');
+
+    echo '<!DOCTYPE html><html><head><meta charset="utf-8">';
+    echo '<style>';
+    echo 'table { border-collapse: collapse; font-family: sans-serif; font-size: 13px; width: 100%; }';
+    echo 'th { background-color: #d97706; color: #ffffff; padding: 10px; border: 1px solid #b45309; text-align: left; }';
+    echo 'td { padding: 8px; border: 1px solid #e5e0d6; text-align: left; }';
+    echo '.present { color: #16a34a; font-weight: bold; }';
+    echo '.perm { color: #d97706; font-weight: bold; }';
+    echo '</style></head><body>';
+    echo '<h2>' . htmlspecialchars($company['name']) . ' — Attendance Log / አቴንዳንስ ሎግ</h2>';
+    echo '<p>Level: <strong>' . htmlspecialchars($levelFilter === 'all' ? 'All Levels' : $levelFilter) . '</strong> | Date: <strong>' . htmlspecialchars($dateFilter) . '</strong></p>';
+    echo '<table border="1"><thead><tr>';
+    echo '<th>ሙሉ ስም</th><th>ቡድን</th><th>ሁኔታ</th><th>ቀን</th><th>ሰዓት</th>';
+    echo '</tr></thead><tbody>';
+
+    foreach ($rows as $r) {
+        $stLabel = $r['status'] === 'present' ? 'የተገኘ' : 'ፈቃድ';
+        $stClass = $r['status'] === 'present' ? 'present' : 'perm';
+        $timeVal = $r['eth_time'] ?: date('H:i:s', strtotime($r['submitted_at']));
+
+        echo '<tr>';
+        echo '<td>' . htmlspecialchars($r['member_name']) . '</td>';
+        echo '<td>' . htmlspecialchars($r['group_name'] ?: '—') . '</td>';
+        echo '<td class="' . $stClass . '">' . htmlspecialchars($stLabel) . '</td>';
+        echo '<td>' . htmlspecialchars($r['eth_date']) . '</td>';
+        echo '<td>' . htmlspecialchars($timeVal) . '</td>';
+        echo '</tr>';
+    }
+
+    echo '</tbody></table></body></html>';
+    exit;
 }
 
 // ── Fetch distinct dates for dropdown ─────────────────────────────────────
@@ -316,14 +140,9 @@ include __DIR__ . '/_header.php';
         </select>
       </form>
 
-      <a href="attendance.php?export=list&level=<?= urlencode($levelFilter) ?>&date=<?= urlencode($dateFilter) ?>" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
-        Export Log (ሙሉ ስም, ቡድን, ሁኔታ, ቀን, ሰዓት)
-      </a>
-
-      <a href="attendance.php?export=excel&level=<?= urlencode($levelFilter) ?>" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">
+      <a href="attendance.php?export=1&level=<?= urlencode($levelFilter) ?>&date=<?= urlencode($dateFilter) ?>" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-        Export Matrix Grid (.xls)
+        Export Excel Sheet (.xls)
       </a>
     </div>
   </div>
