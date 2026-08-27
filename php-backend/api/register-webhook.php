@@ -43,6 +43,17 @@ if (!empty($result['ok'])) {
         'message'     => "Webhook registered: @" . ($me['result']['username'] ?? 'unknown'),
     ]);
 } else {
+    // If the webhook is already set to this URL, treat it as success.
+    $info = tg_send($token, 'getWebhookInfo');
+    if (!empty($info['result']['url']) && $info['result']['url'] === $webhookUrl) {
+        $me = tg_get_me($token);
+        json_out([
+            'success'     => true,
+            'webhookUrl'  => $webhookUrl,
+            'botUsername' => $me['result']['username'] ?? 'unknown',
+            'message'     => "Already registered: @" . ($me['result']['username'] ?? 'unknown'),
+        ]);
+    }
     json_out([
         'success' => false,
         'error'   => $result['description'] ?? 'Telegram returned an error',

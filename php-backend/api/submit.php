@@ -184,12 +184,16 @@ if ($botToken && $chatId) {
 // ── Append to Google Sheets (optional) ───────────────────────────────────
 if ($company['enable_google_sheets'] && $company['google_sheet_id'] && $company['google_service_account_json']) {
     $creds = parse_service_account($company['google_service_account_json']);
+    $tab   = $company['google_sheet_tab'] ?: $company['name'];
     if ($creds) {
-        sheets_append($creds, $company['google_sheet_id'], 'Sheet1!A:E', [
+        sheets_ensure_tab($creds, $company['google_sheet_id'], $tab);
+        sheets_append($creds, $company['google_sheet_id'], sheets_range($tab, 'A:E'), [
             [$displayName, $groupText, $statusTxt, $ethDate, $ethTime],
         ]);
         // Also write to daily tab
-        sheets_append($creds, $company['google_sheet_id'], "'{$ethDate}'!A:E", [
+        $dayTab = $ethDate;
+        sheets_ensure_tab($creds, $company['google_sheet_id'], $dayTab);
+        sheets_append($creds, $company['google_sheet_id'], sheets_range($dayTab, 'A:E'), [
             [$displayName, $groupText, $statusTxt, $ethDate, $ethTime],
         ]);
     }

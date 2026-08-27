@@ -152,19 +152,29 @@ $dates = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 // ── Fetch records for the selected date & level filter ────────────────────
 if ($levelFilter !== 'all' && $levelFilter !== '') {
-    $stmt = db()->prepare(
-        'SELECT ar.* FROM attendance_records ar
+    $sql = 'SELECT ar.* FROM attendance_records ar
          LEFT JOIN members m ON ar.member_id = m.id
          LEFT JOIN levels l ON m.level_id = l.id
-         WHERE ar.company_id = ? AND ar.eth_date = ?
-           AND (ar.level_name = ? OR l.name = ?)
-         ORDER BY ar.submitted_at DESC'
-    );
-    $stmt->execute([$company['id'], $dateFilter, $levelFilter, $levelFilter]);
+         WHERE ar.company_id = ?';
+    $params = [$company['id']];
+    if ($dateFilter !== 'all' && $dateFilter !== '') {
+        $sql .= ' AND ar.eth_date = ?';
+        $params[] = $dateFilter;
+    }
+    $sql .= ' AND (ar.level_name = ? OR l.name = ?) ORDER BY ar.submitted_at DESC';
+    $params[] = $levelFilter;
+    $params[] = $levelFilter;
 } else {
-    $stmt = db()->prepare('SELECT * FROM attendance_records WHERE company_id = ? AND eth_date = ? ORDER BY submitted_at DESC');
-    $stmt->execute([$company['id'], $dateFilter]);
+    $sql = 'SELECT * FROM attendance_records WHERE company_id = ?';
+    $params = [$company['id']];
+    if ($dateFilter !== 'all' && $dateFilter !== '') {
+        $sql .= ' AND eth_date = ?';
+        $params[] = $dateFilter;
+    }
+    $sql .= ' ORDER BY submitted_at DESC';
 }
+$stmt = db()->prepare($sql);
+$stmt->execute($params);
 $records = $stmt->fetchAll();
 
 include __DIR__ . '/_header.php';
@@ -174,7 +184,7 @@ include __DIR__ . '/_header.php';
   <div class="card-header">
     <div>
       <h2 class="card-title">Attendance Log</h2>
-      <p class="card-subtitle">Showing records for: <strong><?= e($dateFilter) ?></strong> <?= $levelFilter !== 'all' ? '— Level: <strong>' . e($levelFilter) . '</strong>' : '' ?></p>
+      <p class="card-subtitle">Showing records for: <strong><?= $dateFilter === 'all' ? 'All Dates' : e($dateFilter) ?></strong> <?= $levelFilter !== 'all' ? '— Level: <strong>' . e($levelFilter) . '</strong>' : '' ?></p>
     </div>
     
     <div class="topbar-actions" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -183,7 +193,8 @@ include __DIR__ . '/_header.php';
           <input type="hidden" name="level" value="<?= e($levelFilter) ?>">
         <?php endif; ?>
         <select name="date" class="form-select" onchange="this.form.submit()" style="width:200px">
-          <option value="<?= e($dateFilter) ?>" selected><?= e($dateFilter) ?></option>
+          <option value="all" <?= $dateFilter === 'all' ? 'selected' : '' ?>>All Dates</option>
+          <option value="<?= e(get_ethiopian_date(eat_now())) ?>" <?= $dateFilter === get_ethiopian_date(eat_now()) ? 'selected' : '' ?>>Today</option>
           <?php foreach ($dates as $d): if ($d === $dateFilter) continue; ?>
             <option value="<?= e($d) ?>"><?= e($d) ?></option>
           <?php endforeach; ?>
@@ -202,6 +213,27 @@ include __DIR__ . '/_header.php';
         CSV (.csv)
       </a>
     </div>
+  </div>
+
+  <!-- Date Tabs -->
+  <div style="display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:6px">
+    <a href="attendance.php?level=<?= urlencode($levelFilter) ?>&date=all"
+       class="btn <?= $dateFilter === 'all' ? 'btn-primary' : 'btn-secondary' ?>"
+       style="border-radius:20px;padding:7px 18px;font-size:0.86rem;text-decoration:none;white-space:nowrap">
+      📅 All Dates
+    </a>
+    <a href="attendance.php?level=<?= urlencode($levelFilter) ?>&date=<?= urlencode(get_ethiopian_date(eat_now())) ?>"
+       class="btn <?= $dateFilter === get_ethiopian_date(eat_now()) ? 'btn-primary' : 'btn-secondary' ?>"
+       style="border-radius:20px;padding:7px 18px;font-size:0.86rem;text-decoration:none;white-space:nowrap">
+      🔥 Today
+    </a>
+    <?php foreach ($dates as $d): ?>
+      <a href="attendance.php?level=<?= urlencode($levelFilter) ?>&date=<?= urlencode($d) ?>"
+         class="btn <?= $dateFilter === $d ? 'btn-primary' : 'btn-secondary' ?>"
+         style="border-radius:20px;padding:7px 18px;font-size:0.86rem;text-decoration:none;white-space:nowrap">
+        <?= e($d) ?>
+      </a>
+    <?php endforeach; ?>
   </div>
 
   <!-- Level Tabs -->

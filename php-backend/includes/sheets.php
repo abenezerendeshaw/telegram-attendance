@@ -100,13 +100,185 @@ function sheets_get(array $credentials, string $sheetId, string $range): array {
 }
 
 // Helper: parse the service account JSON stored in DB
+// Accepts both standard JSON AND dotenv-style key:value,key:value format
+// (the latter is used by some Vercel .env.local exports)
 function parse_service_account(string $jsonStr): ?array {
     if (!$jsonStr) return null;
+
+    // Try standard JSON first
     $creds = json_decode($jsonStr, true);
-    if (!is_array($creds)) return null;
-    // Fix escaped newlines in private key
-    if (isset($creds['private_key'])) {
-        $creds['private_key'] = str_replace('\\n', "\n", $creds['private_key']);
+    if (is_array($creds)) {
+        if (isset($creds['private_key'])) {
+            $creds['private_key'] = str_replace('\\n', "\n", $creds['private_key']);
+        }
+        return $creds;
     }
-    return $creds;
+
+    // Fallback: dotenv-style {key:value,key:value,...}
+    $trimmed = trim($jsonStr);
+    // Strip surrounding quotes (common when copied from .env files)
+    if (strlen($trimmed) >= 2 && $trimmed[0] === '"' && $trimmed[-1] === '"') {
+        $trimmed = substr($trimmed, 1, -1);
+    }
+    if (str_starts_with($trimmed, '{') && str_ends_with($trimmed, '}')) {
+        $inner = substr($trimmed, 1, -1);
+        $pairs = explode(',', $inner);
+        $creds = [];
+        foreach ($pairs as $pair) {
+            $pair = trim($pair);
+            $colonPos = strpos($pair, ':');
+            if ($colonPos === false) continue;
+            $key   = trim(substr($pair, 0, $colonPos));
+            $value = trim(substr($pair, $colonPos + 1));
+            // Unquote if wrapped in quotes
+            if (strlen($value) >= 2 && $value[0] === '"' && $value[-1] === '"') {
+                $value = substr($value, 1, -1);
+            }
+            // Replace escaped newlines (handle both \n and \\n sequences)
+            $value = str_replace('\\\\n', "\n", $value);
+            $value = str_replace('\\n', "\n", $value);
+            $creds[$key] = $value;
+        }
+        // Validate required fields
+        if (!empty($creds['client_email']) && !empty($creds['private_key'])) {
+            return $creds;
+        }
+    }
+
+    return null;
+}
+
+// List existing sheet (tab) titles inside a spreadsheet
+function sheets_list_tabs(array $credentials, string $sheetId): array {
+    $token = sheets_get_access_token($credentials);
+    if (!$token) return [];
+    $url = "https://sheets.googleapis.com/v4/spreadsheets/{$sheetId}?fields=sheets.properties.title";
+    $ch  = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$token}"],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+    if (!$resp) return [];
+    $data = json_decode($resp, true);
+    $tabs = [];
+    foreach ($data['sheets'] ?? [] as $s) {
+        if (!empty($s['properties']['title'])) $tabs[] = $s['properties']['title'];
+    }
+    return $tabs;
+}
+
+// Create a new sheet (tab) inside a spreadsheet if it doesn't exist.
+// Returns [ 'created' => bool, 'exists' => bool ]
+function sheets_ensure_tab(array $credentials, string $sheetId, string $tabName): array {
+    $tabs = sheets_list_tabs($credentials, $sheetId);
+    if (in_array($tabName, $tabs, true)) {
+        return ['created' => false, 'exists' => true];
+    }
+
+    $token = sheets_get_access_token($credentials);
+    if (!$token) return ['created' => false, 'exists' => false];
+
+    $url  = "https://sheets.googleapis.com/v4/spreadsheets/{$sheetId}:batchUpdate";
+    $body = json_encode([
+        'requests' => [
+            ['addSheet' => ['properties' => ['title' => $tabName]]],
+        ],
+    ]);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST  => 'POST',
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_HTTPHEADER     => [
+            "Authorization: Bearer {$token}",
+            'Content-Type: application/json',
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ['created' => $code >= 200 && $code < 300, 'exists' => $code >= 200 && $code < 300];
+}
+
+// Make a tab-safe sheet range name (quote if it has spaces/special chars)
+function sheets_range(string $tabName, string $range): string {
+    $tabName = trim($tabName);
+    $needsQuote = preg_match('/[\s\'"!]/', $tabName);
+    return ($needsQuote ? "'" . str_replace("'", "''", $tabName) . "'" : $tabName) . '!' . $range;
+}
+
+// ── Diagnostics: run each step and return the real error ──────────────────
+// Returns [ 'ok' => bool, 'steps' => [...], 'tabs' => [], 'error' => string ]
+function sheets_diagnose(array $credentials, string $sheetId): array {
+    $report = ['ok' => false, 'steps' => [], 'tabs' => [], 'error' => ''];
+
+    // Step 1: validate credentials JSON
+    $email = $credentials['client_email'] ?? '';
+    $key   = $credentials['private_key'] ?? '';
+    if (!$email || !$key) {
+        $report['error'] = 'Service account JSON is missing client_email or private_key.';
+        return $report;
+    }
+    $report['steps'][] = 'Credentials found (client_email: ' . $email . ')';
+
+    // Step 2: openssl available?
+    if (!function_exists('openssl_pkey_get_private')) {
+        $report['error'] = 'PHP openssl extension is not enabled on this server.';
+        return $report;
+    }
+
+    // Step 3: parse private key
+    $pkey = str_replace('\\n', "\n", $key);
+    $pkeyId = @openssl_pkey_get_private($pkey);
+    if (!$pkeyId) {
+        $report['error'] = 'Could not parse the private key. Make sure the JSON private_key is complete and begins with "-----BEGIN PRIVATE KEY-----".';
+        return $report;
+    }
+    $report['steps'][] = 'Private key parsed successfully';
+
+    // Step 4: get access token
+    $token = sheets_get_access_token($credentials);
+    if (!$token) {
+        $report['error'] = 'Could not obtain an access token. Check the token_uri and that the service account is active.';
+        return $report;
+    }
+    $report['steps'][] = 'Access token obtained';
+
+    // Step 5: read the spreadsheet
+    $url = "https://sheets.googleapis.com/v4/spreadsheets/{$sheetId}?fields=sheets.properties.title";
+    $ch  = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$token}"],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $cerr = curl_error($ch);
+    curl_close($ch);
+
+    if ($code !== 200) {
+        $body = $resp ? json_decode($resp, true) : null;
+        $apiErr = $body['error']['message'] ?? ($body['error']['status'] ?? $resp);
+        if ($code === 403) {
+            $report['error'] = 'PERMISSION DENIED: Share the Google Sheet with ' . $email . ' (Editor access).';
+        } elseif ($code === 404) {
+            $report['error'] = 'Sheet not found. Double-check the Google Sheet ID.';
+        } else {
+            $report['error'] = 'Google API error (' . $code . '): ' . $apiErr . ($cerr ? ' | cURL: ' . $cerr : '');
+        }
+        return $report;
+    }
+    $report['steps'][] = 'Spreadsheet accessed (' . $code . ')';
+
+    $data = json_decode($resp, true);
+    foreach ($data['sheets'] ?? [] as $s) {
+        if (!empty($s['properties']['title'])) $report['tabs'][] = $s['properties']['title'];
+    }
+    $report['ok'] = true;
+    return $report;
 }
