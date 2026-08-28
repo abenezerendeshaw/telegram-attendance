@@ -275,30 +275,37 @@ export default function App() {
   const [receiptStudents, setReceiptStudents] = useState([]);
   const [receiptStudentSearch, setReceiptStudentSearch] = useState("");
   const [receiptPickerOpen, setReceiptPickerOpen] = useState(false);
-  const [receiptImageData, setReceiptImageData] = useState("");
+  const [receiptFileData, setReceiptFileData] = useState("");
+  const [receiptFileName, setReceiptFileName] = useState("");
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptStatusMsg, setReceiptStatusMsg] = useState({ type: "", message: "" });
 
   const receiptPickerRef = useRef(null);
 
-  // ---------- Improved Receipt Handlers ----------
-  // Read, resize and compress the receipt image client-side so it is always
-  // small enough to upload reliably (screenshots can be several MB).
-  const processReceiptImage = (file) => {
+  // ---------- Receipt file handling ----------
+  // Accepts images, PDFs, Word docs and other files. Images are resized and
+  // compressed client-side so they upload reliably; other files are sent as-is.
+  const processReceiptFile = (file) => {
     if (!file) {
-      setReceiptImageData("");
-      return;
-    }
-    if (!file.type || !file.type.startsWith("image/")) {
-      setReceiptStatusMsg({ type: "error", message: "Please upload an image file (JPG, PNG, WebP)." });
+      setReceiptFileData("");
+      setReceiptFileName("");
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setReceiptStatusMsg({ type: "error", message: "Image size must be less than 10MB." });
+      setReceiptStatusMsg({ type: "error", message: "File size must be less than 10MB." });
       return;
     }
+    setReceiptFileName(file.name || "");
+    const isImage = file.type && file.type.startsWith("image/");
     const reader = new FileReader();
     reader.onload = () => {
+      if (!isImage) {
+        // Non-image: send the raw file (PDF, DOC, etc.)
+        setReceiptFileData(reader.result);
+        if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
+        return;
+      }
+      // Image: resize + compress
       const img = new Image();
       img.onload = () => {
         const MAX = 1280;
@@ -314,11 +321,11 @@ export default function App() {
         canvas.height = height;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, width, height);
-        setReceiptImageData(canvas.toDataURL("image/jpeg", 0.82));
+        setReceiptFileData(canvas.toDataURL("image/jpeg", 0.82));
         if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
       };
       img.onerror = () =>
-        setReceiptStatusMsg({ type: "error", message: "Could not read this image file. Please try another screenshot or photo." });
+        setReceiptStatusMsg({ type: "error", message: "Could not read this file. Please try another file." });
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
@@ -327,10 +334,11 @@ export default function App() {
   const handleFileChange = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) {
-      setReceiptImageData("");
+      setReceiptFileData("");
+      setReceiptFileName("");
       return;
     }
-    processReceiptImage(f);
+    processReceiptFile(f);
   };
 
   // Drag-and-drop handlers
@@ -338,7 +346,7 @@ export default function App() {
     e.preventDefault();
     const f = e.dataTransfer.files?.[0];
     if (f) {
-      processReceiptImage(f);
+      processReceiptFile(f);
       // Sync the file input for consistency (optional)
       const input = document.getElementById("receiptFileInput");
       if (input) {
@@ -352,7 +360,7 @@ export default function App() {
   const handleReceiptSubmit = async (e) => {
     e.preventDefault();
     // Validation
-    if (!receiptPayerName.trim() || receiptStudents.length === 0 || !receiptImageData) {
+    if (!receiptPayerName.trim() || receiptStudents.length === 0 || !receiptFileData) {
       setReceiptStatusMsg({ type: "error", message: "ሁሉም መስኮች አስፈላጊ ናቸው።" });
       return;
     }
@@ -362,13 +370,15 @@ export default function App() {
       await axios.post(`${API_BASE}/receipt.php?c=${companySlug}`, {
         payerName: receiptPayerName,
         studentNames: receiptStudents.map((s) => s.name),
-        imageData: receiptImageData,
+        fileName: receiptFileName,
+        fileData: receiptFileData,
       });
       setReceiptStatusMsg({ type: "success", message: "✅ ደረሰኙ በተሳካ ሁኔታ ተልኳል።" });
       setReceiptPayerName("");
       setReceiptStudents([]);
       setReceiptStudentSearch("");
-      setReceiptImageData("");
+      setReceiptFileData("");
+      setReceiptFileName("");
       // Reset file input
       const input = document.getElementById("receiptFileInput");
       if (input) input.value = "";
@@ -866,11 +876,11 @@ export default function App() {
                   </div>
 
                   <div style={styles.field}>
-                    <label style={styles.label}>የደረሰኝ ምስል <span style={{ color: '#ff6b6b' }}>*</span></label>
+                    <label style={styles.label}>የደረሰኝ ፋይል <span style={{ color: '#ff6b6b' }}>*</span></label>
                     <div
                       style={{
                         ...styles.uploadArea,
-                        borderColor: receiptImageData ? primary : "rgba(255,255,255,0.12)",
+                        borderColor: receiptFileData ? primary : "rgba(255,255,255,0.12)",
                       }}
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -878,7 +888,7 @@ export default function App() {
                         e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.05)";
                       }}
                       onDragLeave={(e) => {
-                        e.currentTarget.style.borderColor = receiptImageData ? primary : "rgba(255,255,255,0.12)";
+                        e.currentTarget.style.borderColor = receiptFileData ? primary : "rgba(255,255,255,0.12)";
                         e.currentTarget.style.backgroundColor = "transparent";
                       }}
                       onDrop={handleDrop}
@@ -886,20 +896,25 @@ export default function App() {
                       <input
                         id="receiptFileInput"
                         type="file"
-                        accept="image/*"
+                        accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx"
                         onChange={handleFileChange}
                         style={styles.fileInput}
                       />
-                      {receiptImageData ? (
+                      {receiptFileData ? (
                         <div style={styles.previewContainer}>
-                          <img src={receiptImageData} alt="Receipt preview" style={styles.previewImage} />
+                          {receiptFileData.startsWith("data:image/") ? (
+                            <img src={receiptFileData} alt="Receipt preview" style={styles.previewImage} />
+                          ) : (
+                            <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>📄</span>
+                          )}
+                          {receiptFileName && <p style={styles.previewHint}>{receiptFileName}</p>}
                           <p style={styles.previewHint}>Click or drag to replace</p>
                         </div>
                       ) : (
                         <div style={styles.uploadPlaceholder}>
                           <span style={styles.uploadIcon}>📄</span>
-                          <p style={styles.uploadText}>Drop your receipt image here</p>
-                          <p style={styles.uploadHint}>or click to browse (JPG, PNG, WebP, max 5MB)</p>
+                          <p style={styles.uploadText}>Drop your receipt file here</p>
+                          <p style={styles.uploadHint}>or click to browse (images, PDF, DOC, TXT, max 10MB)</p>
                         </div>
                       )}
                     </div>

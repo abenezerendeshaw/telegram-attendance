@@ -23,7 +23,8 @@ if (!$company['enable_receipt_upload']) json_out(['error' => 'Receipt upload is 
 // ── Parse multipart OR base64 JSON body ──────────────────────────────────
 $payerName   = '';
 $studentName = '';
-$imageData   = ''; // base64 data URI
+$fileData    = ''; // base64 data URI (any file type: image, pdf, doc, ...)
+$fileName    = '';
 
 // Try JSON body first (React sends base64)
 $body = json_body();
@@ -36,30 +37,51 @@ if ($body) {
     }
     $names = array_values(array_filter(array_map('trim', (array)$names), fn($n) => $n !== ''));
     $studentName = $names ? implode(', ', $names) : trim($body['studentName'] ?? '');
-    $imageData   = $body['imageData'] ?? '';
+    $fileData    = $body['fileData'] ?? ($body['imageData'] ?? '');
+    $fileName    = trim($body['fileName'] ?? '');
 }
 
-if (!$payerName || !$studentName || !$imageData) {
+if (!$payerName || !$studentName || !$fileData) {
     json_out(['error' => 'ሁሉም መስኮች አስፈላጊ ናቸው። / All fields are required.'], 400);
 }
 
-// ── Decode and save image ─────────────────────────────────────────────────
-if (!preg_match('/^data:image\/(\w+);base64,/', $imageData, $matches)) {
-    json_out(['error' => 'Invalid image format.'], 400);
+// ── Decode and save file (images, PDF, DOC, etc.) ─────────────────────────
+if (!preg_match('/^data:([a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+);base64,/', $fileData, $matches)) {
+    json_out(['error' => 'Invalid file format.'], 400);
 }
-$ext      = strtolower($matches[1]);
-$ext      = in_array($ext, ['jpg','jpeg','png','webp','gif']) ? $ext : 'jpg';
-$rawData  = base64_decode(preg_replace('/^data:image\/\w+;base64,/', '', $imageData));
+$mimeType = strtolower($matches[1]);
 
-if (strlen($rawData) > 5 * 1024 * 1024) {
-    json_out(['error' => 'Image must be under 5MB.'], 400);
+// Map MIME type / original file name to a safe extension
+$mimeExt = [
+    'image/jpeg' => 'jpg',
+    'image/png'  => 'png',
+    'image/webp' => 'webp',
+    'image/gif'  => 'gif',
+    'application/pdf' => 'pdf',
+    'application/msword' => 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+    'text/csv' => 'csv',
+    'text/plain' => 'txt',
+    'application/vnd.ms-excel' => 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+];
+$ext = $mimeExt[$mimeType] ?? strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+if (!in_array($ext, ['jpg','jpeg','png','webp','gif','pdf','doc','docx','csv','txt','xls','xlsx'], true)) {
+    $ext = 'bin';
+}
+if ($ext === 'jpeg') $ext = 'jpg';
+
+$rawData = base64_decode(preg_replace('/^data:[a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+;base64,/', '', $fileData));
+
+if (strlen($rawData) > 10 * 1024 * 1024) {
+    json_out(['error' => 'File must be under 10MB.'], 400);
 }
 
 $uploadDir = dirname(__DIR__) . '/uploads/receipts/' . $company['slug'] . '/';
 if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
 
-$fileName = date('Y-m-d_H-i-s') . '_' . random_token(8) . ".{$ext}";
-$filePath = $uploadDir . $fileName;
+$storedName = date('Y-m-d_H-i-s') . '_' . random_token(8) . ".{$ext}";
+$filePath   = $uploadDir . $storedName;
 file_put_contents($filePath, $rawData);
 
 // ── Save to DB ────────────────────────────────────────────────────────────
@@ -67,7 +89,7 @@ $stmt = db()->prepare(
     'INSERT INTO receipt_uploads (company_id, payer_name, student_name, file_path)
      VALUES (?, ?, ?, ?)'
 );
-$stmt->execute([$company['id'], $payerName, $studentName, $company['slug'] . '/' . $fileName]);
+$stmt->execute([$company['id'], $payerName, $studentName, $company['slug'] . '/' . $storedName]);
 
 // ── Send to Telegram ──────────────────────────────────────────────────────
 $botToken = $company['telegram_bot_token'] ?: get_default_bot_token();
@@ -83,12 +105,18 @@ if ($botToken && $chatId) {
         $payload['message_thread_id'] = (int)$company['telegram_topic_receipt'];
     }
 
-    // Send photo to Telegram
-    $url = "https://api.telegram.org/bot{$botToken}/sendPhoto";
+    // Images go as photo; any other file type goes as a document
+    $isImage = str_starts_with($mimeType, 'image/');
+    $method  = $isImage ? 'sendPhoto' : 'sendDocument';
+    $fileKey = $isImage ? 'photo' : 'document';
+    $mime    = $isImage ? 'image/' . $ext : $mimeType;
+    $name    = $fileName ?: $storedName;
+
+    $url = "https://api.telegram.org/bot{$botToken}/{$method}";
     $ch  = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => array_merge($payload, ['photo' => new CURLFile($filePath, 'image/' . $ext, $fileName)]),
+        CURLOPT_POSTFIELDS     => array_merge($payload, [$fileKey => new CURLFile($filePath, $mime, $name)]),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => 30,
     ]);
@@ -99,7 +127,7 @@ if ($botToken && $chatId) {
         $tgResp = json_decode($result, true);
         if (!empty($tgResp['result']['message_id'])) {
             db()->prepare('UPDATE receipt_uploads SET telegram_message_id = ? WHERE file_path = ?')
-                ->execute([$tgResp['result']['message_id'], $company['slug'] . '/' . $fileName]);
+                ->execute([$tgResp['result']['message_id'], $company['slug'] . '/' . $storedName]);
         }
     }
 }

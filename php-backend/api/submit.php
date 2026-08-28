@@ -67,11 +67,33 @@ if (!$adminOverride && !$company['allow_offtime_submission']) {
 if (!$adminOverride && !$company['allow_multiple_submissions']) {
     $today = $now->format('Y-m-d');
     $stmt  = db()->prepare(
-        'SELECT id FROM attendance_records
+        'SELECT id, status, submitted_at FROM attendance_records
          WHERE company_id = ? AND member_name LIKE ? AND DATE(submitted_at) = ? LIMIT 1'
     );
     $stmt->execute([$company['id'], $fullName, $today]);
-    if ($stmt->fetch()) {
+    $existing = $stmt->fetch();
+    if ($existing) {
+        // Notify the admin that this user already submitted today
+        $dupToken = $company['admin_bot_token'] ?: $company['telegram_bot_token'] ?: get_default_bot_token();
+        $admins   = $company['admin_bot_admins'] ?? '';
+        if ($dupToken) {
+            $notifyDate = get_ethiopian_date($now);
+            $notify = "⚠️ *የተደጋገመ መመዝገብ ሙከራ / Duplicate Attempt*\n\n"
+                    . "👤 *ሙሉ ስም:*\u{2001}{$fullName}\n"
+                    . "📍 *ቡድን:*\u{2001}\u{2001}{$group}\n"
+                    . "📊 *የቀድሞ ሁኔታ:*\u{2001}{$existing['status']}\n"
+                    . "📅 *ቀን:*\u{2001}\u{2001}\u{2001}{$notifyDate}\n\n"
+                    . "ይህ ሰው ዛሬ ቀደም ብሎ ስለተመዘገበ እንደገና ለመመዝገብ ሞክሯል።";
+
+            // Send to authorized admin IDs, otherwise the main chat
+            if (trim($admins) !== '') {
+                foreach (array_filter(array_map('trim', explode(',', $admins))) as $adminId) {
+                    tg_message($dupToken, trim($adminId), $notify);
+                }
+            } elseif ($company['telegram_chat_id']) {
+                tg_message($dupToken, $company['telegram_chat_id'], $notify);
+            }
+        }
         json_out(['error' => 'ለዛሬ መዝግበዋል። / Already submitted today.'], 400);
     }
 }
