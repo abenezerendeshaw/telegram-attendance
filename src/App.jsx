@@ -372,25 +372,37 @@ export default function App() {
 
       <div style={styles.card}>
         {selectedView ? (
-          // ── Selected student: show student photo + confirm attendance ──
-          <div style={{ animation: "fadeUp .3s ease" }}>
+          // ── Selected student: profile page using the default UI language ──
+          <div style={{ animation: "fadeUp .3s ease", display: "flex", flexDirection: "column", flex: 1 }}>
             <div style={styles.coverWrap}>
-              <img
-                src={selectedStudent.image || config.cover}
-                alt={selectedStudent.name}
-                style={styles.coverImage}
-              />
+              {selectedStudent.image ? (
+                <img src={selectedStudent.image} alt={selectedStudent.name} style={styles.coverImage} />
+              ) : (
+                <div style={{...styles.coverImage, backgroundColor: primary, backgroundImage: `linear-gradient(135deg, ${primary}, #0f1117)`}} />
+              )}
               <div style={styles.coverOverlay} />
+              <div style={styles.avatarBadge}>
+                {selectedStudent.image ? (
+                  <img src={selectedStudent.image} alt={selectedStudent.name} style={styles.avatarImage} />
+                ) : (
+                  <span style={styles.avatarFallback}>{(selectedStudent.name || "👤").charAt(0)}</span>
+                )}
+              </div>
             </div>
-            <div style={styles.content}>
-              <h1 style={styles.title}>{selectedStudent.name}</h1>
-              {selectedStudent.englishName && <p style={styles.subtitle}>{selectedStudent.englishName}</p>}
+
+            <div style={{...styles.content, paddingTop: 48}}>
+              <div style={styles.profileHead}>
+                <h1 style={styles.title}>{selectedStudent.name}</h1>
+                {selectedStudent.englishName && <p style={styles.subtitle}>{selectedStudent.englishName}</p>}
+              </div>
 
               <div style={styles.badgeRow}>
                 <div style={styles.badgeGroup}>📍 <strong>ቡድን:</strong> {selectedStudent.group}</div>
                 {selectedStudent.branch && <div style={styles.badgeBranch}>🏢 <strong>ዘርፍ/ምድብ:</strong> {selectedStudent.branch}</div>}
                 {selectedStudent.level && <div style={styles.badgeLevel}>🎓 <strong>ደረጃ:</strong> {selectedStudent.level}</div>}
               </div>
+
+              <div style={styles.sectionDivider} />
 
               <div style={styles.field}>
                 <label style={styles.label}>የመገኘት ሁኔታ</label>
@@ -832,6 +844,45 @@ const styles = {
     border: "2px solid rgba(255,255,255,0.25)",
     objectFit: "cover",
     boxShadow: "0 6px 18px rgba(0,0,0,0.4)",
+  },
+  avatarBadge: {
+    position: "absolute",
+    left: "50%",
+    bottom: -38,
+    transform: "translateX(-50%)",
+    width: 78,
+    height: 78,
+    borderRadius: "50%",
+    border: "3px solid rgba(255,255,255,0.9)",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.5)",
+    overflow: "hidden",
+    backgroundColor: "#1a1e28",
+    zIndex: 3,
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+  avatarFallback: {
+    width: "100%",
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 30,
+    fontWeight: 700,
+    color: "#fff",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  profileHead: {
+    marginBottom: 14,
+  },
+  sectionDivider: {
+    height: 1,
+    margin: "2px 0 18px",
+    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent)",
   },
   content: {
     padding: "22px 22px 8px",
