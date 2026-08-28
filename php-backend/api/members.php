@@ -14,7 +14,7 @@ $company = get_company_by_slug($slug);
 if (!$company) json_out(['error' => 'Company not found'], 404);
 
 $stmt = db()->prepare(
-    'SELECT m.id, m.name, m.english_name, m.group_name, m.member_type,
+    'SELECT m.id, m.name, m.english_name, m.group_name, m.member_type, m.image_path,
             b.name AS branch_name, l.name AS level_name
      FROM members m
      LEFT JOIN branches b ON b.id = m.branch_id
@@ -33,6 +33,7 @@ $members = array_map(fn($r) => [
     'group'       => $r['group_name'] ?? '',
     'branch'      => $r['branch_name'] ?? '',
     'level'       => $r['level_name'] ?? '',
+    'image'       => $r['image_path'] ? BASE_URL . '/students/images/' . basename($r['image_path']) : '',
 ], $rows);
 
 json_out(['members' => $members]);

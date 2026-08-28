@@ -54,12 +54,14 @@ function base64url_encode(string $data): string {
     return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
 }
 
-// Append rows to a sheet range
-function sheets_append(array $credentials, string $sheetId, string $range, array $values): bool {
+// Append rows to a sheet range.
+// Returns [ 'ok' => bool, 'error' => string ] with the real error for debugging.
+function sheets_append(array $credentials, string $sheetId, string $range, array $values): array {
     $token = sheets_get_access_token($credentials);
-    if (!$token) return false;
+    if (!$token) return ['ok' => false, 'error' => 'Could not obtain access token'];
 
-    $url  = "https://sheets.googleapis.com/v4/spreadsheets/{$sheetId}/values/{$range}:append";
+    $encodedRange = rawurlencode($range);
+    $url  = "https://sheets.googleapis.com/v4/spreadsheets/{$sheetId}/values/{$encodedRange}:append";
     $url .= '?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
 
     $body = json_encode(['values' => $values]);
@@ -76,8 +78,15 @@ function sheets_append(array $credentials, string $sheetId, string $range, array
     ]);
     $resp = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $cerr = curl_error($ch);
     curl_close($ch);
-    return $code >= 200 && $code < 300;
+
+    if ($code >= 200 && $code < 300) {
+        return ['ok' => true, 'error' => ''];
+    }
+    $bodyArr = $resp ? json_decode($resp, true) : null;
+    $apiErr  = $bodyArr['error']['message'] ?? $resp;
+    return ['ok' => false, 'error' => "HTTP {$code}: {$apiErr}" . ($cerr ? " | cURL: {$cerr}" : '')];
 }
 
 // Get all rows from a range
@@ -209,6 +218,136 @@ function sheets_range(string $tabName, string $range): string {
     $tabName = trim($tabName);
     $needsQuote = preg_match('/[\s\'"!]/', $tabName);
     return ($needsQuote ? "'" . str_replace("'", "''", $tabName) . "'" : $tabName) . '!' . $range;
+}
+
+// Convert a 0-based column index to a sheet column letter (0 -> A, 25 -> Z, 26 -> AA)
+function sheets_col_letter(int $index): string {
+    $letter = '';
+    while ($index >= 0) {
+        $letter = chr(65 + ($index % 26)) . $letter;
+        $index = intdiv($index, 26) - 1;
+    }
+    return $letter;
+}
+
+// Write raw values to a range (PUT values:update)
+function sheets_set_values(array $credentials, string $sheetId, string $range, array $values): array {
+    $token = sheets_get_access_token($credentials);
+    if (!$token) return ['ok' => false, 'error' => 'Could not obtain access token'];
+
+    $encodedRange = rawurlencode($range);
+    $url = "https://sheets.googleapis.com/v4/spreadsheets/{$sheetId}/values/{$encodedRange}?valueInputOption=USER_ENTERED";
+    $body = json_encode(['values' => $values]);
+    $ch   = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST  => 'PUT',
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_HTTPHEADER     => [
+            "Authorization: Bearer {$token}",
+            'Content-Type: application/json',
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $cerr = curl_error($ch);
+    curl_close($ch);
+
+    if ($code >= 200 && $code < 300) return ['ok' => true, 'error' => ''];
+    $bodyArr = $resp ? json_decode($resp, true) : null;
+    return ['ok' => false, 'error' => "HTTP {$code}: " . ($bodyArr['error']['message'] ?? $resp) . ($cerr ? " | cURL: {$cerr}" : '')];
+}
+
+// Mark attendance in a cross-tab layout:
+//   Columns: Amharic name | English name | Group/Level | [one column per date]
+//   Each date is a column header; the ✓/P goes into the cell under that date
+//   for the matching member row.
+function sheets_mark_attendance(array $credentials, string $sheetId, string $tab,
+                                array $memberInfo, string $dateLabel, string $mark): array {
+    $staticHeaders = ['ስም (Amharic)', 'English Name', 'Group/Level', 'Branches / Locations'];
+    $existing = sheets_get($credentials, $sheetId, sheets_range($tab, 'A1:ZZ1000'));
+    $header   = $existing[0] ?? [];
+    $rows     = array_slice($existing, 1);
+
+    // ── Ensure static headers (ስም, English Name, Group/Level, Branch) ────
+    $needsFix = false;
+    for ($i = 0; $i < count($staticHeaders); $i++) {
+        if (trim((string)($header[$i] ?? '')) !== $staticHeaders[$i]) {
+            $needsFix = true;
+            break;
+        }
+    }
+    if ($needsFix) {
+        $r = sheets_set_values($credentials, $sheetId,
+            sheets_range($tab, 'A1:' . sheets_col_letter(count($staticHeaders) - 1) . '1'),
+            [$staticHeaders]);
+        if (!$r['ok']) return $r;
+        $header = $staticHeaders;
+    }
+
+    // ── Date column: reuse or append a new header ─────────────────────────
+    $dateCol = array_search($dateLabel, $header, true);
+    $newHeader = false;
+    if ($dateCol === false) {
+        $dateCol = count($header);
+        $header[] = $dateLabel;
+        $newHeader = true;
+    }
+
+    // ── Member row: match by Amharic name or English name ─────────────────
+    $rowIdx = null;
+    foreach ($rows as $i => $r) {
+        $a = trim((string)($r[0] ?? ''));
+        $b = trim((string)($r[1] ?? ''));
+        if ($a === $memberInfo['amharic'] || ($memberInfo['english'] !== '' && $b === $memberInfo['english'])) {
+            $rowIdx = $i + 2; // 1-based sheet row, skip header row
+            break;
+        }
+    }
+    $isNewRow = false;
+    if ($rowIdx === null) {
+        $rowIdx = count($rows) + 2;
+        $isNewRow = true;
+    }
+
+    // ── Write new date header if needed ───────────────────────────────────
+    if ($newHeader) {
+        $r = sheets_set_values($credentials, $sheetId,
+            sheets_range($tab, sheets_col_letter($dateCol) . '1'), [[$dateLabel]]);
+        if (!$r['ok']) return $r;
+    }
+
+    // ── Write names/group/branch only for a brand-new member row ────────────
+    if ($isNewRow) {
+        $r = sheets_set_values($credentials, $sheetId,
+            sheets_range($tab, 'A' . $rowIdx . ':D' . $rowIdx),
+            [[$memberInfo['amharic'], $memberInfo['english'], $memberInfo['group'], $memberInfo['branch']]]);
+        if (!$r['ok']) return $r;
+    }
+
+    // ── Write the ✓ / P into the date cell for this member ────────────────
+    return sheets_set_values($credentials, $sheetId,
+        sheets_range($tab, sheets_col_letter($dateCol) . $rowIdx), [[$mark]]);
+}
+
+// Ensure the static headers exist in the sheet (for Test Connection).
+function sheets_ensure_headers(array $credentials, string $sheetId, string $tab): array {
+    $staticHeaders = ['ስም (Amharic)', 'English Name', 'Group/Level', 'Branches / Locations'];
+    $existing = sheets_get($credentials, $sheetId, sheets_range($tab, 'A1:D1'));
+    $header = $existing[0] ?? [];
+    $needsFix = false;
+    for ($i = 0; $i < count($staticHeaders); $i++) {
+        if (trim((string)($header[$i] ?? '')) !== $staticHeaders[$i]) {
+            $needsFix = true;
+            break;
+        }
+    }
+    if ($needsFix) {
+        return sheets_set_values($credentials, $sheetId,
+            sheets_range($tab, 'A1:D1'), [$staticHeaders]);
+    }
+    return ['ok' => true, 'error' => ''];
 }
 
 // ── Diagnostics: run each step and return the real error ──────────────────

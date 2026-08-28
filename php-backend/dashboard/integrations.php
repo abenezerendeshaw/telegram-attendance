@@ -7,36 +7,62 @@ $company = require_auth();
 $flash   = flash_get();
 $pageTitle = 'Integrations';
 
+// ── Fetch branches & levels for filtering ────────────────────────────────
+$stmt = db()->prepare('SELECT name FROM branches WHERE company_id = ? ORDER BY name ASC');
+$stmt->execute([$company['id']]);
+$branches = array_column($stmt->fetchAll(), 'name');
+
+$stmt = db()->prepare('SELECT name FROM levels WHERE company_id = ? ORDER BY name ASC');
+$stmt->execute([$company['id']]);
+$levels = array_column($stmt->fetchAll(), 'name');
+
+// Currently selected filters (comma-separated in DB)
+$selBranches = $company['google_sheet_branches']
+    ? array_filter(array_map('trim', explode(',', $company['google_sheet_branches'])))
+    : [];
+$selLevels = $company['google_sheet_levels']
+    ? array_filter(array_map('trim', explode(',', $company['google_sheet_levels'])))
+    : [];
+
 if (is_post()) {
     try {
         $eSheets = isset($_POST['enable_google_sheets']) ? 1 : 0;
         $sId     = trim($_POST['google_sheet_id'] ?? '');
         $sTab    = trim($_POST['google_sheet_tab'] ?? '');
         $sJson   = trim($_POST['google_service_account_json'] ?? '');
+        $sBranches = $_POST['google_sheet_branches'] ?? [];
+        $sLevels   = $_POST['google_sheet_levels'] ?? [];
 
         if ($sTab === '') $sTab = $company['name'];
 
+        $branchesStr = implode(',', array_map('trim', array_filter($sBranches)));
+        $levelsStr   = implode(',', array_map('trim', array_filter($sLevels)));
+
         if ($sJson) {
             $stmt = db()->prepare(
-                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id, google_sheet_tab, google_service_account_json)
-                 VALUES (?, ?, ?, ?, ?)
+                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id, google_sheet_tab, google_sheet_branches, google_sheet_levels, google_service_account_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                  enable_google_sheets = VALUES(enable_google_sheets),
                  google_sheet_id = VALUES(google_sheet_id),
                  google_sheet_tab = VALUES(google_sheet_tab),
+                 google_sheet_branches = VALUES(google_sheet_branches),
+                 google_sheet_levels = VALUES(google_sheet_levels),
                  google_service_account_json = VALUES(google_service_account_json)'
             );
-            $stmt->execute([$company['id'], $eSheets, $sId, $sTab, $sJson]);
+            $stmt->execute([$company['id'], $eSheets, $sId, $sTab, $branchesStr, $levelsStr, $sJson]);
         } else {
             $stmt = db()->prepare(
-                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id, google_sheet_tab)
-                 VALUES (?, ?, ?, ?)
+                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id, google_sheet_tab, google_sheet_branches, google_sheet_levels)
+                 VALUES (?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                  enable_google_sheets = VALUES(enable_google_sheets),
                  google_sheet_id = VALUES(google_sheet_id),
-                 google_sheet_tab = VALUES(google_sheet_tab)'
+                 google_sheet_tab = VALUES(google_sheet_tab),
+                 google_sheet_branches = VALUES(google_sheet_branches),
+                 google_sheet_levels = VALUES(google_sheet_levels)'
             );
-            $stmt->execute([$company['id'], $eSheets, $sId, $sTab]);
+            $stmt->execute([$company['id'], $eSheets, $sId, $sTab, $branchesStr, $levelsStr]);
         }
 
         // If sheets are enabled, try to create the tab (verify credentials work too)
@@ -109,7 +135,46 @@ include __DIR__ . '/_header.php';
         <input class="form-input" type="text" name="google_sheet_tab" value="<?= e($company['google_sheet_tab'] ?? $company['name']) ?>" placeholder="<?= e($company['name']) ?>">
         <div class="form-hint">The tab inside your spreadsheet where attendance is written. Defaults to your Organization Name. It is created automatically when you save.</div>
       </div>
-      
+
+      <div class="divider"></div>
+
+      <div class="form-group">
+        <label class="form-label">Branches / Locations to Sync (optional)</label>
+        <?php if (empty($branches)): ?>
+          <div class="form-hint">No branches yet. You can create them under <a href="branches.php" style="color:var(--accent)">Branches & Levels</a>.</div>
+        <?php else: ?>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <?php foreach ($branches as $b): ?>
+              <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
+                <input type="checkbox" name="google_sheet_branches[]" value="<?= e($b) ?>" style="accent-color:var(--accent)"
+                  <?= in_array($b, $selBranches, true) ? 'checked' : '' ?>>
+                🏢 <?= e($b) ?>
+              </label>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+        <div class="form-hint">Leave empty to sync all branches. Select one or more to sync only those.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Levels / Grades / Sections to Sync (optional)</label>
+        <?php if (empty($levels)): ?>
+          <div class="form-hint">No levels yet. You can create them under <a href="branches.php" style="color:var(--accent)">Branches & Levels</a>.</div>
+        <?php else: ?>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <?php foreach ($levels as $lvl): ?>
+              <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
+                <input type="checkbox" name="google_sheet_levels[]" value="<?= e($lvl) ?>" style="accent-color:var(--accent)"
+                  <?= in_array($lvl, $selLevels, true) ? 'checked' : '' ?>>
+                🎓 <?= e($lvl) ?>
+              </label>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+        <div class="form-hint">Leave empty to sync all levels. Select one or more to sync only those.</div>
+      </div>
+
+      <div class="divider"></div>
       <div class="form-group">
         <label class="form-label">Service Account JSON (Credentials)</label>
         <?php if ($company['google_service_account_json']): ?>

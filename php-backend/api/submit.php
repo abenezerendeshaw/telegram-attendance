@@ -116,6 +116,7 @@ $levelText   = $memberRow['level_name'] ?? '';
 $ethDate   = get_ethiopian_date($now);
 $ethTime   = get_ethiopian_time($now);
 $statusTxt = $status === 'present' ? 'ተገኝቷል / ተገኝታለች' : 'ፈቃድ ጠይቋል / ጠይቃለች';
+$statusMark = $status === 'present' ? '✓' : 'P';
 
 // ── Save to MySQL ─────────────────────────────────────────────────────────
 $stmt = db()->prepare(
@@ -183,19 +184,32 @@ if ($botToken && $chatId) {
 
 // ── Append to Google Sheets (optional) ───────────────────────────────────
 if ($company['enable_google_sheets'] && $company['google_sheet_id'] && $company['google_service_account_json']) {
-    $creds = parse_service_account($company['google_service_account_json']);
-    $tab   = $company['google_sheet_tab'] ?: $company['name'];
-    if ($creds) {
-        sheets_ensure_tab($creds, $company['google_sheet_id'], $tab);
-        sheets_append($creds, $company['google_sheet_id'], sheets_range($tab, 'A:E'), [
-            [$displayName, $groupText, $statusTxt, $ethDate, $ethTime],
-        ]);
-        // Also write to daily tab
-        $dayTab = $ethDate;
-        sheets_ensure_tab($creds, $company['google_sheet_id'], $dayTab);
-        sheets_append($creds, $company['google_sheet_id'], sheets_range($dayTab, 'A:E'), [
-            [$displayName, $groupText, $statusTxt, $ethDate, $ethTime],
-        ]);
+    // Branch / level filtering for sheet sync
+    $syncBranches = ($company['google_sheet_branches'] ?? '')
+        ? array_filter(array_map('trim', explode(',', $company['google_sheet_branches'])))
+        : [];
+    $syncLevels = ($company['google_sheet_levels'] ?? '')
+        ? array_filter(array_map('trim', explode(',', $company['google_sheet_levels'])))
+        : [];
+
+    $branchOk = empty($syncBranches) || in_array($branchText, $syncBranches, true);
+    $levelOk  = empty($syncLevels)  || in_array($levelText,  $syncLevels,  true);
+
+    if ($branchOk && $levelOk) {
+        $creds = parse_service_account($company['google_service_account_json']);
+        $tab   = $company['google_sheet_tab'] ?: $company['name'];
+        if ($creds) {
+            sheets_ensure_tab($creds, $company['google_sheet_id'], $tab);
+            $res = sheets_mark_attendance($creds, $company['google_sheet_id'], $tab, [
+                'amharic' => $fullName,
+                'english' => $englishName,
+                'group'   => $groupText,
+                'branch'  => $branchText,
+            ], $ethDate, $statusMark);
+            if (!$res['ok']) {
+                error_log('[Sheets] Mark failed: ' . $res['error']);
+            }
+        }
     }
 }
 

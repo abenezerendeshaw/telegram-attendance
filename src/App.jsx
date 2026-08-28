@@ -298,8 +298,16 @@ export default function App() {
     return (
       <div style={styles.container}>
         <div style={{...styles.card, padding: 30, textAlign: 'center'}}>
-          <h2>Invalid Link</h2>
-          <p>This attendance link is incomplete or the organization was not found.</p>
+          <h2 style={styles.title}>Attendance Mini App</h2>
+          <p style={styles.subtitle}>Sign in to your organization account, or register a new organization, to start using the attendance system.</p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
+            <a href="https://specificethiopian.com/evaluation/login.php" style={{...styles.loginBtn, backgroundColor: '#d97706'}}>Sign In</a>
+            <a href="https://specificethiopian.com/evaluation/register.php" style={{...styles.loginBtn, backgroundColor: '#334155'}}>Sign Up</a>
+          </div>
+          <div style={{textAlign:'center', padding:'16px 0 0', fontSize:'12px', color:'#888'}}>
+            Developed by <a href="https://specificethiopian.com" target="_blank" rel="noopener" style={{color:'#d97706', textDecoration:'none'}}>Specific Ethiopian</a> — 
+            Contact: <a href="https://t.me/xesser" target="_blank" rel="noopener" style={{color:'#229ED9', textDecoration:'none'}}>@xesser</a>
+          </div>
         </div>
       </div>
     );
@@ -308,6 +316,78 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
+        {mode === "attendance" && selectedStudent ? (
+          <>
+            <img
+              src={selectedStudent.image || config.cover}
+              alt={selectedStudent.name}
+              style={{...styles.topImage, height: 200, objectPosition: "center 20%"}}
+            />
+            <div style={styles.content}>
+              <h1 style={styles.title}>{selectedStudent.name}</h1>
+              {selectedStudent.englishName && <p style={styles.subtitle}>{selectedStudent.englishName}</p>}
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 16 }}>
+                <div style={styles.groupBadge}>📍 <strong>ቡድን:</strong> {selectedStudent.group}</div>
+                {selectedStudent.branch && <div style={styles.branchBadge}>🏢 <strong>ዘርፍ/ምድብ:</strong> {selectedStudent.branch}</div>}
+                {selectedStudent.level && <div style={styles.levelBadge}>🎓 <strong>ደረጃ:</strong> {selectedStudent.level}</div>}
+              </div>
+
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>የመገኘት ሁኔታ</label>
+                <select
+                  value={attendanceStatus}
+                  onChange={(e) => {
+                    setAttendanceStatus(e.target.value);
+                    if (status.type) setStatus({ type: "", message: "" });
+                  }}
+                  style={styles.select}
+                >
+                  <option value="present">ተገኝቷል / ተገኝታለች</option>
+                  <option value="permission">ፈቃድ ጠይቋል / ጠይቃለች</option>
+                </select>
+              </div>
+
+              {attendanceStatus === "permission" && (
+                <div style={styles.inputGroup}>
+                  <label style={styles.label}>የፈቃድ ምክንያት</label>
+                  <textarea
+                    value={reason}
+                    onChange={(e) => {
+                      setReason(e.target.value);
+                      if (status.type) setStatus({ type: "", message: "" });
+                    }}
+                    placeholder="እባክዎ የፈቃድዎን ምክንያት እዚህ ይፃፉ..."
+                    rows={3}
+                    style={styles.textarea}
+                  />
+                </div>
+              )}
+
+              {status.message && (
+                <p style={status.type === "error" ? styles.errorMsg : styles.successMsg}>
+                  {status.message}
+                </p>
+              )}
+
+              <button type="button" onClick={handleSubmit} disabled={loading} style={{...styles.button, backgroundColor: config.primaryColor || '#d97706'}}>
+                {loading ? "በመመዝገብ ላይ..." : "መረጃውን መዝግብ"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedStudent(null);
+                  setSearchTerm("");
+                  setStatus({ type: "", message: "" });
+                }}
+                style={styles.ghostButton}
+              >
+                ← ስም ቀይር / Change Name
+              </button>
+            </div>
+          </>
+        ) : (
+        <>
         {config.cover ? (
           <img src={config.cover} alt="Cover" style={styles.topImage} />
         ) : (
@@ -370,21 +450,30 @@ export default function App() {
                     <ul style={styles.dropdownList}>
                       {filteredStudents.length > 0 ? (
                         filteredStudents.slice(0, 30).map((st, idx) => (
-                          <li
-                            key={idx}
-                            onPointerDown={(e) => {
-                              e.preventDefault();
-                              setSelectedStudent(st);
-                              setSearchTerm(st.name);
-                              setIsOpen(false);
-                            }}
-                            style={styles.dropdownItem}
-                          >
-                            <span style={{ fontWeight: "600" }}>{st.name}</span>
-                            <span style={styles.groupSubTag}>{st.group}</span>
-                            {st.branch && <span style={styles.branchSubTag}>{st.branch}</span>}
-                            {st.level && <span style={styles.levelSubTag}>{st.level}</span>}
-                          </li>
+                            <li
+                              key={idx}
+                              onPointerDown={(e) => {
+                                e.preventDefault();
+                                setSelectedStudent(st);
+                                setSearchTerm(st.name);
+                                setIsOpen(false);
+                              }}
+                              style={styles.dropdownItem}
+                            >
+                              {st.image ? (
+                                <img src={st.image} alt={st.name} style={styles.dropdownThumb} />
+                              ) : (
+                                <span style={styles.dropdownThumb}>👤</span>
+                              )}
+                              <span style={styles.dropdownInfo}>
+                                <span style={{ fontWeight: "600" }}>{st.name}</span>
+                                <span style={styles.dropdownTags}>
+                                  <span style={styles.groupSubTag}>{st.group}</span>
+                                  {st.branch && <span style={styles.branchSubTag}>{st.branch}</span>}
+                                  {st.level && <span style={styles.levelSubTag}>{st.level}</span>}
+                                </span>
+                              </span>
+                            </li>
                         ))
                       ) : (
                         <li style={styles.noResultItem}>ምንም አልተገኘም (No match found)</li>
@@ -393,14 +482,6 @@ export default function App() {
                   )}
                 </div>
               </div>
-
-              {selectedStudent && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 16 }}>
-                  <div style={styles.groupBadge}>📍 <strong>ቡድን:</strong> {selectedStudent.group}</div>
-                  {selectedStudent.branch && <div style={styles.branchBadge}>🏢 <strong>ዘርፍ/ምድብ:</strong> {selectedStudent.branch}</div>}
-                  {selectedStudent.level && <div style={styles.levelBadge}>🎓 <strong>ደረጃ:</strong> {selectedStudent.level}</div>}
-                </div>
-              )}
 
               <div style={styles.inputGroup}>
                 <label style={styles.label}>የመገኘት ሁኔታ</label>
@@ -558,10 +639,17 @@ export default function App() {
               </div>
             </form>
           )}
+
+          <div style={{ textAlign: 'center', paddingTop: 8, fontSize: '12px', color: '#888' }}>
+            Developed by <a href="https://specificethiopian.com" target="_blank" rel="noopener" style={{color:'#d97706', textDecoration:'none'}}>Specific Ethiopian</a> — 
+            Contact: <a href="https://t.me/xesser" target="_blank" rel="noopener" style={{color:'#229ED9', textDecoration:'none'}}>@xesser</a>
+          </div>
         </div>
-      </div>
+        </>
+      )}
     </div>
-  );
+  </div>
+);
 }
 
 // ---------- Enhanced Styles ----------
@@ -684,8 +772,32 @@ const styles = {
     fontSize: "14px",
     color: "#ffffff",
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: "10px",
+  },
+  dropdownThumb: {
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    objectFit: "cover",
+    border: "1px solid rgba(255,255,255,0.15)",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    fontSize: "16px",
+  },
+  dropdownInfo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0,
+  },
+  dropdownTags: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 4,
   },
   groupSubTag: {
     fontSize: "11px",
@@ -773,6 +885,25 @@ const styles = {
     cursor: "pointer",
     marginTop: "8px",
     transition: "opacity 0.2s",
+  },
+  ghostButton: {
+    padding: "12px",
+    borderRadius: "10px",
+    backgroundColor: "transparent",
+    color: "#a0a0a0",
+    fontSize: "13px",
+    border: "1px solid rgba(255,255,255,0.2)",
+    cursor: "pointer",
+    marginTop: "8px",
+  },
+  loginBtn: {
+    padding: "12px 20px",
+    borderRadius: "10px",
+    color: "#ffffff",
+    fontSize: "15px",
+    fontWeight: "600",
+    textDecoration: "none",
+    display: "inline-block",
   },
   errorMsg: {
     fontSize: "13px",

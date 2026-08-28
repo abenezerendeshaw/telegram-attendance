@@ -15,15 +15,36 @@ if (is_post() && isset($_POST['action']) && $_POST['action'] === 'save') {
     $branch  = (int)($_POST['branch_id'] ?? 0);
     $level   = (int)($_POST['level_id'] ?? 0);
     $active  = isset($_POST['is_active']) ? 1 : 0;
-    
+    $imagePath = null;
+
+    if (!empty($_FILES['image']['name']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+        $f = $_FILES['image'];
+        $validExts = ['jpg','jpeg','png','webp','gif'];
+        $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+        if (in_array($ext, $validExts, true) && $f['size'] <= 5 * 1024 * 1024) {
+            $destDir = __DIR__ . '/../students/images/';
+            if (!is_dir($destDir)) mkdir($destDir, 0775, true);
+            $fileName = uniqid('m_', true) . '.' . $ext;
+            $destPath = $destDir . $fileName;
+            if (move_uploaded_file($f['tmp_name'], $destPath)) {
+                $imagePath = '/students/images/' . $fileName;
+            }
+        }
+    }
+
     if ($name) {
         if ($id > 0) {
-            $stmt = db()->prepare('UPDATE members SET name = ?, english_name = ?, group_name = ?, branch_id = ?, level_id = ?, is_active = ? WHERE id = ? AND company_id = ?');
-            $stmt->execute([$name, $ename, $group, $branch ?: null, $level ?: null, $active, $id, $company['id']]);
+            if ($imagePath) {
+                $stmt = db()->prepare('UPDATE members SET name = ?, english_name = ?, group_name = ?, branch_id = ?, level_id = ?, is_active = ?, image_path = ? WHERE id = ? AND company_id = ?');
+                $stmt->execute([$name, $ename, $group, $branch ?: null, $level ?: null, $active, $imagePath, $id, $company['id']]);
+            } else {
+                $stmt = db()->prepare('UPDATE members SET name = ?, english_name = ?, group_name = ?, branch_id = ?, level_id = ?, is_active = ? WHERE id = ? AND company_id = ?');
+                $stmt->execute([$name, $ename, $group, $branch ?: null, $level ?: null, $active, $id, $company['id']]);
+            }
             flash_set('success', 'Member updated successfully.');
         } else {
-            $stmt = db()->prepare('INSERT INTO members (company_id, name, english_name, group_name, branch_id, level_id, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$company['id'], $name, $ename, $group, $branch ?: null, $level ?: null, $active]);
+            $stmt = db()->prepare('INSERT INTO members (company_id, name, english_name, group_name, branch_id, level_id, is_active, image_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+            $stmt->execute([$company['id'], $name, $ename, $group, $branch ?: null, $level ?: null, $active, $imagePath]);
             flash_set('success', 'New member added successfully.');
         }
     }
@@ -83,6 +104,7 @@ include __DIR__ . '/_header.php';
       <table>
         <thead>
           <tr>
+            <th>Photo</th>
             <th>Primary Name (Amharic)</th>
             <th>English Name</th>
             <th>Group / Class</th>
@@ -95,6 +117,13 @@ include __DIR__ . '/_header.php';
         <tbody>
           <?php foreach ($members as $m): ?>
           <tr>
+            <td>
+              <?php if ($m['image_path']): ?>
+                <img src="<?= BASE_PATH ?>/students/images/<?= e(basename($m['image_path'])) ?>" alt="<?= e($m['name']) ?>" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
+              <?php else: ?>
+                <span style="color:var(--text3)">—</span>
+              <?php endif; ?>
+            </td>
             <td style="font-weight:600"><?= e($m['name']) ?></td>
             <td><?= e($m['english_name']) ?></td>
             <td>
@@ -133,7 +162,7 @@ include __DIR__ . '/_header.php';
             </td>
           </tr>
           <?php endforeach; if (empty($members)): ?>
-          <tr><td colspan="7" class="text-center" style="padding:40px;color:var(--text2)">No members found. Add one above.</td></tr>
+          <tr><td colspan="8" class="text-center" style="padding:40px;color:var(--text2)">No members found. Add one above.</td></tr>
           <?php endif; ?>
         </tbody>
       </table>
@@ -146,7 +175,7 @@ include __DIR__ . '/_header.php';
   <div class="card" style="width:100%;max-width:500px;margin:20px;position:relative">
     <button onclick="closeModal()" style="position:absolute;top:20px;right:20px;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer">&times;</button>
     <h3 class="card-title mb-4" id="modalTitle">Add New Member</h3>
-    <form method="POST">
+    <form method="POST" enctype="multipart/form-data">
       <input type="hidden" name="action" value="save">
       <input type="hidden" name="id" id="m_id" value="0">
       
@@ -158,6 +187,13 @@ include __DIR__ . '/_header.php';
       <div class="form-group">
         <label class="form-label">English Name (Optional)</label>
         <input class="form-input" type="text" name="english_name" id="m_ename">
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Photo (Optional)</label>
+        <input class="form-input" type="file" name="image" id="m_image" accept="image/*" onchange="previewImage(this)">
+        <img id="m_image_preview" src="" alt="Photo preview" style="display:none;width:80px;height:80px;object-fit:cover;border-radius:8px;margin-top:8px;border:1px solid var(--border)">
+        <small style="color:var(--text3)">JPG, PNG, WEBP, GIF under 5MB. Leave empty to keep the current photo.</small>
       </div>
       
       <div class="form-group">
@@ -217,6 +253,18 @@ const modal = document.getElementById('memberModal');
 const toggleWrap = document.getElementById('m_toggle_wrap');
 const activeCheck = document.getElementById('m_active');
 
+function previewImage(input) {
+    const preview = document.getElementById('m_image_preview');
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            preview.src = e.target.result;
+            preview.style.display = 'block';
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
 function openModal() {
     document.getElementById('modalTitle').innerText = 'Add New Member';
     document.getElementById('m_id').value = '0';
@@ -225,6 +273,11 @@ function openModal() {
     document.getElementById('m_group').value = '';
     document.getElementById('m_branch').value = '';
     document.getElementById('m_level').value = '';
+    const imgInput = document.getElementById('m_image');
+    imgInput.value = '';
+    const preview = document.getElementById('m_image_preview');
+    preview.src = '';
+    preview.style.display = 'none';
     activeCheck.checked = true;
     toggleWrap.classList.add('on');
     modal.style.display = 'flex';
@@ -238,7 +291,17 @@ function editModal(data) {
     document.getElementById('m_group').value = data.group_name || '';
     document.getElementById('m_branch').value = data.branch_id || '';
     document.getElementById('m_level').value = data.level_id || '';
-    
+    const imgInput = document.getElementById('m_image');
+    imgInput.value = '';
+    const preview = document.getElementById('m_image_preview');
+    if (data.image_path) {
+        preview.src = '<?= BASE_PATH ?>' + data.image_path;
+        preview.style.display = 'block';
+    } else {
+        preview.src = '';
+        preview.style.display = 'none';
+    }
+
     activeCheck.checked = !!data.is_active;
     if (activeCheck.checked) toggleWrap.classList.add('on');
     else toggleWrap.classList.remove('on');

@@ -352,6 +352,10 @@ if (is_post()) {
       <div class="form-footer">
         <a href="<?= BASE_PATH ?>/login.php">← Return to organization login</a>
       </div>
+      <div class="se-footer" style="text-align:center;padding:16px 0;font-size:13px;color:#9aa4b2">
+        Developed by <a href="https://specificethiopian.com" target="_blank" rel="noopener" style="color:#d97706;text-decoration:none">Specific Ethiopian</a> —
+        Contact: <a href="https://t.me/xesser" target="_blank" rel="noopener" style="color:#229ED9;text-decoration:none">@xesser</a>
+      </div>
     </div>
   </div>
 </div>

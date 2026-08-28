@@ -47,6 +47,7 @@ if (!$report['ok']) {
 // Connection works — try to ensure the configured tab exists
 $tab = trim($company['google_sheet_tab'] ?? $company['name']);
 $ensure = sheets_ensure_tab($creds, $sheetId, $tab);
+$headers = sheets_ensure_headers($creds, $sheetId, $tab);
 
 json_out([
     'success' => true,
@@ -55,5 +56,8 @@ json_out([
     'tab'     => $tab,
     'tabCreated' => !empty($ensure['created']),
     'tabExists'  => !empty($ensure['exists']),
+    'headersWritten' => !empty($headers['ok']),
+    'savedBranches' => $company['google_sheet_branches'] ?? null,
+    'savedLevels'   => $company['google_sheet_levels'] ?? null,
     'message' => 'Connection OK. Sheet tabs found: ' . (count($report['tabs']) ? implode(', ', $report['tabs']) : '(none)'),
 ]);
