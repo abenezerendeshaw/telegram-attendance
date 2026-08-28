@@ -13,8 +13,21 @@ if (is_post()) {
     if ($action === 'save_bot_token') {
         $token = trim($_POST['default_bot_token'] ?? '');
         set_system_config('default_bot_token', $token);
-        flash_set('success', 'Default bot token saved.');
-        redirect('settings.php');
+
+        // Register the shared webhook so Telegram delivers updates for the default bot
+        $note = '';
+        if ($token !== '') {
+            require_once __DIR__ . '/../includes/telegram.php';
+            $webhookUrl = BASE_URL . '/webhook/shared';
+            $res = tg_set_webhook($token, $webhookUrl);
+            if (!empty($res['ok'])) {
+                $note = " Webhook registered at {$webhookUrl}.";
+            } else {
+                $note = " Webhook registration failed: " . ($res['description'] ?? 'no response') . " — you can set it manually via @BotFather: {$webhookUrl}";
+            }
+        }
+        flash_set($token === '' ? 'error' : 'success', ($token === '' ? 'Default bot token removed.' : 'Default bot token saved.') . $note);
+        redirect('index.php');
     }
 }
 
@@ -58,7 +71,12 @@ $pageTitle = 'System Settings';
         <label class="form-label">Default Bot Token (from @BotFather)</label>
         <input class="form-input" type="text" name="default_bot_token" value="<?= e($currentToken) ?>" placeholder="123456789:ABCdefGHIjklMNOpqr...">
       </div>
-      <button type="submit" class="btn btn-primary">Save Token</button>
+      <div class="form-group">
+        <label class="form-label">Webhook URL (auto-registered on save)</label>
+        <input class="form-input" type="text" value="<?= e(BASE_URL . '/webhook/shared') ?>" readonly style="background:rgba(255,255,255,0.02);font-family:monospace">
+        <div class="form-hint">Telegram will deliver messages from the shared bot to this URL. It routes each message to the company whose Main Chat/Channel ID matches the chat.</div>
+      </div>
+      <button type="submit" class="btn btn-primary">Save Token &amp; Register Webhook</button>
     </form>
   </div>
 </div>

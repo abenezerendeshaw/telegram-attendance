@@ -6,6 +6,7 @@ RewriteCond %{HTTP:Authorization} .+
 RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
 # ── Webhook routing: /evaluation/webhook/[slug] → /evaluation/webhook/index.php?c=[slug] ────────
+RewriteRule ^webhook/shared/?$ webhook/shared.php [QSA,L]
 RewriteRule ^webhook/([a-z0-9_-]+)/?$ webhook/index.php?c=$1 [QSA,L]
 RewriteRule ^webhook/([a-z0-9_-]+)/$ webhook/index.php?c=$1 [QSA,L]
 
