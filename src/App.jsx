@@ -375,8 +375,8 @@ export default function App() {
           // ── Selected student: profile page using the default UI language ──
           <div style={{ animation: "fadeUp .3s ease", display: "flex", flexDirection: "column", flex: 1 }}>
             <div style={styles.coverWrap}>
-              {selectedStudent.image ? (
-                <img src={selectedStudent.image} alt={selectedStudent.name} style={styles.coverImage} />
+              {config.cover ? (
+                <img src={config.cover} alt="Cover" style={styles.coverImage} />
               ) : (
                 <div style={{...styles.coverImage, backgroundColor: primary, backgroundImage: `linear-gradient(135deg, ${primary}, #0f1117)`}} />
               )}
@@ -390,7 +390,7 @@ export default function App() {
               </div>
             </div>
 
-            <div style={{...styles.content, paddingTop: 48}}>
+            <div style={{...styles.content, paddingTop: 58}}>
               <div style={styles.profileHead}>
                 <h1 style={styles.title}>{selectedStudent.name}</h1>
                 {selectedStudent.englishName && <p style={styles.subtitle}>{selectedStudent.englishName}</p>}
@@ -848,13 +848,13 @@ const styles = {
   avatarBadge: {
     position: "absolute",
     left: "50%",
-    bottom: -38,
+    bottom: -46,
     transform: "translateX(-50%)",
-    width: 78,
-    height: 78,
+    width: 96,
+    height: 96,
     borderRadius: "50%",
-    border: "3px solid rgba(255,255,255,0.9)",
-    boxShadow: "0 10px 28px rgba(0,0,0,0.5)",
+    border: "4px solid rgba(255,255,255,0.92)",
+    boxShadow: "0 12px 32px rgba(0,0,0,0.55)",
     overflow: "hidden",
     backgroundColor: "#1a1e28",
     zIndex: 3,
