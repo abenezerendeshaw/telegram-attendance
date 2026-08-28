@@ -282,21 +282,55 @@ export default function App() {
   const receiptPickerRef = useRef(null);
 
   // ---------- Improved Receipt Handlers ----------
+  // Read, resize and compress the receipt image client-side so it is always
+  // small enough to upload reliably (screenshots can be several MB).
+  const processReceiptImage = (file) => {
+    if (!file) {
+      setReceiptImageData("");
+      return;
+    }
+    if (!file.type || !file.type.startsWith("image/")) {
+      setReceiptStatusMsg({ type: "error", message: "Please upload an image file (JPG, PNG, WebP)." });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setReceiptStatusMsg({ type: "error", message: "Image size must be less than 10MB." });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1280;
+        let width = img.width;
+        let height = img.height;
+        if (width > MAX || height > MAX) {
+          const ratio = Math.min(MAX / width, MAX / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        setReceiptImageData(canvas.toDataURL("image/jpeg", 0.82));
+        if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
+      };
+      img.onerror = () =>
+        setReceiptStatusMsg({ type: "error", message: "Could not read this image file. Please try another screenshot or photo." });
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleFileChange = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) {
       setReceiptImageData("");
       return;
     }
-    // Optional: file size validation (e.g., max 5MB)
-    if (f.size > 5 * 1024 * 1024) {
-      setReceiptStatusMsg({ type: "error", message: "Image size must be less than 5MB." });
-      e.target.value = "";
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setReceiptImageData(reader.result);
-    reader.readAsDataURL(f);
+    processReceiptImage(f);
   };
 
   // Drag-and-drop handlers
@@ -304,13 +338,7 @@ export default function App() {
     e.preventDefault();
     const f = e.dataTransfer.files?.[0];
     if (f) {
-      if (f.size > 5 * 1024 * 1024) {
-        setReceiptStatusMsg({ type: "error", message: "Image size must be less than 5MB." });
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => setReceiptImageData(reader.result);
-      reader.readAsDataURL(f);
+      processReceiptImage(f);
       // Sync the file input for consistency (optional)
       const input = document.getElementById("receiptFileInput");
       if (input) {
@@ -346,7 +374,7 @@ export default function App() {
       if (input) input.value = "";
     } catch (err) {
       console.error(err);
-      setReceiptStatusMsg({ type: "error", message: err.response?.data?.message || "Submission failed" });
+      setReceiptStatusMsg({ type: "error", message: err.response?.data?.error || err.response?.data?.message || "Submission failed" });
     } finally {
       setReceiptLoading(false);
     }

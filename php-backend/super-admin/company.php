@@ -28,6 +28,14 @@ if (is_post()) {
         flash_set('success', 'Plan updated successfully.');
         redirect('company.php?id=' . $cid);
     }
+
+    if ($action === 'reset_password') {
+        $defaultPass = '123456789';
+        db()->prepare('UPDATE companies SET password_hash = ? WHERE id = ?')
+            ->execute([password_hash($defaultPass, PASSWORD_BCRYPT, ['cost' => 12]), $cid]);
+        flash_set('success', "Password reset successfully. New password: {$defaultPass}");
+        redirect('company.php?id=' . $cid);
+    }
 }
 
 $pageTitle = 'Manage: ' . $c['name'];
@@ -49,6 +57,12 @@ $pageTitle = 'Manage: ' . $c['name'];
 <div class="topbar" style="padding:16px 30px;display:flex;justify-content:space-between;align-items:center">
   <div style="font-size:1.2rem;font-weight:bold;color:#d97706">
     <a href="index.php" style="color:#d97706;text-decoration:none">← SAAS Super Admin</a>
+  </div>
+  <div style="display:flex;gap:15px;align-items:center">
+    <span style="color:#ccc;font-size:0.9rem"><?= e($admin['username']) ?></span>
+    <a href="settings.php" class="btn btn-secondary btn-sm">Settings</a>
+    <a href="profile.php" class="btn btn-secondary btn-sm">Profile</a>
+    <a href="logout.php" class="btn btn-secondary btn-sm">Sign Out</a>
   </div>
 </div>
 
@@ -106,6 +120,17 @@ $pageTitle = 'Manage: ' . $c['name'];
             </select>
             <button type="submit" class="btn btn-secondary">Save</button>
           </div>
+        </div>
+      </form>
+
+      <form method="POST" style="margin-top:15px;padding-top:15px;border-top:1px solid var(--border)">
+        <input type="hidden" name="action" value="reset_password">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div>
+            <strong>Reset Password</strong>
+            <div style="font-size:0.8rem;color:#888">Reset this organization's login password to 123456789.</div>
+          </div>
+          <button type="submit" class="btn btn-danger" onclick="return confirm('Reset the password for this organization to 123456789?')">Reset Password</button>
         </div>
       </form>
     </div>

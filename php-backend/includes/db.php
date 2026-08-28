@@ -108,3 +108,43 @@ function ensure_company_settings_columns(): void
     }
     $done = true;
 }
+
+// ── System config table (key-value for super-admin settings) ──────────────
+function ensure_system_config_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    db()->exec(
+        'CREATE TABLE IF NOT EXISTS system_config (
+            config_key   VARCHAR(100) PRIMARY KEY,
+            config_value TEXT DEFAULT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+    $done = true;
+}
+
+function get_system_config(string $key): string
+{
+    ensure_system_config_table();
+    $stmt = db()->prepare('SELECT config_value FROM system_config WHERE config_key = ? LIMIT 1');
+    $stmt->execute([$key]);
+    $row = $stmt->fetch();
+    return $row ? ($row['config_value'] ?? '') : '';
+}
+
+function set_system_config(string $key, string $value): void
+{
+    ensure_system_config_table();
+    $stmt = db()->prepare(
+        'INSERT INTO system_config (config_key, config_value) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)'
+    );
+    $stmt->execute([$key, $value]);
+}
+
+function get_default_bot_token(): string
+{
+    $token = get_system_config('default_bot_token');
+    if ($token === '') $token = DEFAULT_BOT_TOKEN;
+    return $token;
+}

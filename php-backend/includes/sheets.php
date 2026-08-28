@@ -94,7 +94,8 @@ function sheets_get(array $credentials, string $sheetId, string $range): array {
     $token = sheets_get_access_token($credentials);
     if (!$token) return [];
 
-    $url = "https://sheets.googleapis.com/v4/spreadsheets/{$sheetId}/values/{$range}";
+    $encodedRange = rawurlencode($range);
+    $url = "https://sheets.googleapis.com/v4/spreadsheets/{$sheetId}/values/{$encodedRange}";
     $ch  = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_HTTPHEADER     => ["Authorization: Bearer {$token}"],
@@ -259,43 +260,44 @@ function sheets_set_values(array $credentials, string $sheetId, string $range, a
     return ['ok' => false, 'error' => "HTTP {$code}: " . ($bodyArr['error']['message'] ?? $resp) . ($cerr ? " | cURL: {$cerr}" : '')];
 }
 
-// Mark attendance in a cross-tab layout:
-//   Columns: Amharic name | English name | Group/Level | [one column per date]
-//   Each date is a column header; the ✓/P goes into the cell under that date
-//   for the matching member row.
-function sheets_mark_attendance(array $credentials, string $sheetId, string $tab,
+// ── Daily-column matrix writer ────────────────────────────────────────────
+// Layout (rows = members, one column per date):
+//   Columns: ስም (Amharic) | English Name | Group/Level | Branch | [Date] [Date] ...
+// Each day gets its own new column (appended when the date isn't found yet).
+// A mark (✓ / P) is placed in the member's row under that day's column.
+// Existing date columns are never removed or overwritten.
+function sheets_mark_daily_cell(array $credentials, string $sheetId, string $tab,
                                 array $memberInfo, string $dateLabel, string $mark): array {
     $staticHeaders = ['ስም (Amharic)', 'English Name', 'Group/Level', 'Branches / Locations'];
-    $existing = sheets_get($credentials, $sheetId, sheets_range($tab, 'A1:ZZ1000'));
+    $existing = sheets_get($credentials, $sheetId, sheets_range($tab, 'A1:ZZ2000'));
     $header   = $existing[0] ?? [];
     $rows     = array_slice($existing, 1);
 
-    // ── Ensure static headers (ስም, English Name, Group/Level, Branch) ────
-    $needsFix = false;
-    for ($i = 0; $i < count($staticHeaders); $i++) {
-        if (trim((string)($header[$i] ?? '')) !== $staticHeaders[$i]) {
-            $needsFix = true;
-            break;
-        }
-    }
-    if ($needsFix) {
+    // Trim trailing empty cells from the header row
+    while (count($header) && trim((string)end($header)) === '') array_pop($header);
+
+    // ── Ensure the static columns exist (A..D), keeping any extra columns ──
+    $first4 = array_map(fn($h) => trim((string)$h), array_slice($header, 0, 4));
+    if (count($header) < 4 || $first4 !== $staticHeaders) {
+        $newHeader = array_merge($staticHeaders, array_slice($header, 4));
         $r = sheets_set_values($credentials, $sheetId,
-            sheets_range($tab, 'A1:' . sheets_col_letter(count($staticHeaders) - 1) . '1'),
-            [$staticHeaders]);
+            sheets_range($tab, 'A1:' . sheets_col_letter(count($newHeader) - 1) . '1'),
+            [$newHeader]);
         if (!$r['ok']) return $r;
-        $header = $staticHeaders;
+        $header = $newHeader;
     }
 
-    // ── Date column: reuse or append a new header ─────────────────────────
+    // ── Find the date column; append a new one if today is not present ─────
     $dateCol = array_search($dateLabel, $header, true);
-    $newHeader = false;
     if ($dateCol === false) {
         $dateCol = count($header);
         $header[] = $dateLabel;
-        $newHeader = true;
+        $r = sheets_set_values($credentials, $sheetId,
+            sheets_range($tab, sheets_col_letter($dateCol) . '1'), [[$dateLabel]]);
+        if (!$r['ok']) return $r;
     }
 
-    // ── Member row: match by Amharic name or English name ─────────────────
+    // ── Find the member row by Amharic name or English name ────────────────
     $rowIdx = null;
     foreach ($rows as $i => $r) {
         $a = trim((string)($r[0] ?? ''));
@@ -305,21 +307,8 @@ function sheets_mark_attendance(array $credentials, string $sheetId, string $tab
             break;
         }
     }
-    $isNewRow = false;
     if ($rowIdx === null) {
         $rowIdx = count($rows) + 2;
-        $isNewRow = true;
-    }
-
-    // ── Write new date header if needed ───────────────────────────────────
-    if ($newHeader) {
-        $r = sheets_set_values($credentials, $sheetId,
-            sheets_range($tab, sheets_col_letter($dateCol) . '1'), [[$dateLabel]]);
-        if (!$r['ok']) return $r;
-    }
-
-    // ── Write names/group/branch only for a brand-new member row ────────────
-    if ($isNewRow) {
         $r = sheets_set_values($credentials, $sheetId,
             sheets_range($tab, 'A' . $rowIdx . ':D' . $rowIdx),
             [[$memberInfo['amharic'], $memberInfo['english'], $memberInfo['group'], $memberInfo['branch']]]);
@@ -329,6 +318,18 @@ function sheets_mark_attendance(array $credentials, string $sheetId, string $tab
     // ── Write the ✓ / P into the date cell for this member ────────────────
     return sheets_set_values($credentials, $sheetId,
         sheets_range($tab, sheets_col_letter($dateCol) . $rowIdx), [[$mark]]);
+}
+
+// Mark attendance: ✓ for present, P for permission (daily-column layout)
+function sheets_mark_attendance(array $credentials, string $sheetId, string $tab,
+                                array $memberInfo, string $dateLabel, string $mark): array {
+    return sheets_mark_daily_cell($credentials, $sheetId, $tab, $memberInfo, $dateLabel, $mark);
+}
+
+// Mark a receipt for a member (daily-column layout, same as attendance)
+function sheets_mark_receipt(array $credentials, string $sheetId, string $tab,
+                             array $memberInfo, string $dateLabel): array {
+    return sheets_mark_daily_cell($credentials, $sheetId, $tab, $memberInfo, $dateLabel, '💳');
 }
 
 // Ensure the static headers exist in the sheet (for Test Connection).

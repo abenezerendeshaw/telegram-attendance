@@ -38,6 +38,8 @@ $pageTitle = 'Super Admin Dashboard';
     </div>
     <div style="display:flex;gap:15px;align-items:center">
       <span style="color:#ccc;font-size:0.9rem">Welcome, <?= e($admin['username']) ?></span>
+      <a href="settings.php" class="btn btn-secondary btn-sm">Settings</a>
+      <a href="profile.php" class="btn btn-secondary btn-sm">Profile</a>
       <a href="logout.php" class="btn btn-secondary btn-sm">Sign Out</a>
     </div>
   </div>

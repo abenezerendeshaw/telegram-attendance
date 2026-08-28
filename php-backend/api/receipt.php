@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/telegram.php';
 require_once __DIR__ . '/../includes/sheets.php';
+require_once __DIR__ . '/../includes/ethiopian_date.php';
 
 set_cors();
 ensure_company_settings_columns();
@@ -69,7 +70,7 @@ $stmt = db()->prepare(
 $stmt->execute([$company['id'], $payerName, $studentName, $company['slug'] . '/' . $fileName]);
 
 // ── Send to Telegram ──────────────────────────────────────────────────────
-$botToken = $company['telegram_bot_token'] ?? '';
+$botToken = $company['telegram_bot_token'] ?: get_default_bot_token();
 $chatId   = $company['telegram_chat_id']   ?? '';
 if ($botToken && $chatId) {
     $caption = "💳 *ደረሰኝ / Receipt*\n\n"
@@ -104,22 +105,39 @@ if ($botToken && $chatId) {
 }
 
 // ── Append to Google Sheets (optional) ────────────────────────────────────
+// Uses the same daily-column layout as attendance: each student is a row and
+// every receipt date becomes a new column (💳 marks the paid students).
 if ($company['enable_google_sheets'] && $company['google_sheet_id'] && $company['google_service_account_json']) {
     $creds = parse_service_account($company['google_service_account_json']);
     if ($creds) {
         $tab = $company['google_sheet_receipt_tab'] ?: 'Receipts';
         sheets_ensure_tab($creds, $company['google_sheet_id'], $tab);
+        $dateLabel = get_ethiopian_date();
 
-        $headers = ['ክፍያ ፈጻሚ (Payer)', 'ተማሪ(ዎች) (Student)', 'ቀን (Date)', 'ሰዓት (Time)'];
-        $existing = sheets_get($creds, $company['google_sheet_id'], sheets_range($tab, 'A1:D1'));
-        $first = $existing[0] ?? [];
-        if (trim((string)($first[0] ?? '')) === '') {
-            sheets_set_values($creds, $company['google_sheet_id'], sheets_range($tab, 'A1:D1'), [$headers]);
+        // Resolve each selected student to their member row info (name, english, group, branch)
+        $names = explode(',', $studentName);
+        $names = array_values(array_filter(array_map('trim', $names), fn($n) => $n !== ''));
+        $lookup = db()->prepare(
+            'SELECT m.name, m.english_name, m.group_name, b.name AS branch_name
+             FROM members m
+             LEFT JOIN branches b ON b.id = m.branch_id
+             WHERE m.company_id = ? AND m.is_active = 1'
+        );
+        $lookup->execute([$company['id']]);
+        $memberRows = $lookup->fetchAll();
+
+        $byName = [];
+        foreach ($memberRows as $mr) $byName[$mr['name']] = $mr;
+
+        foreach ($names as $n) {
+            $mr = $byName[$n] ?? null;
+            sheets_mark_receipt($creds, $company['google_sheet_id'], $tab, [
+                'amharic' => $mr['name'] ?? $n,
+                'english' => $mr['english_name'] ?? '',
+                'group'   => $mr['group_name'] ?? '',
+                'branch'  => $mr['branch_name'] ?? '',
+            ], $dateLabel);
         }
-
-        sheets_append($creds, $company['google_sheet_id'], sheets_range($tab, 'A:D'), [
-            [$payerName, $studentName, date('Y-m-d'), date('H:i:s')],
-        ]);
     }
 }
 

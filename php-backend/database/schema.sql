@@ -177,3 +177,9 @@ INSERT INTO super_admin (username, password_hash) VALUES (
   'superadmin',
   '$2y$12$sBZ9QHp6hDznw0rjL460GeEnydg6jbZdmhfjWTGF8RirA8UHAk..m'
 );
+
+-- ── System Config (super-admin settings: default bot token, etc.) ───────
+CREATE TABLE IF NOT EXISTS system_config (
+  config_key   VARCHAR(100) PRIMARY KEY,
+  config_value TEXT DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
