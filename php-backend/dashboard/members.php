@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 $company = require_auth();
 $flash   = flash_get();
 $pageTitle = 'Members List';
+ensure_member_image_column();
 
 // Handle Add/Edit
 if (is_post() && isset($_POST['action']) && $_POST['action'] === 'save') {
@@ -28,24 +29,35 @@ if (is_post() && isset($_POST['action']) && $_POST['action'] === 'save') {
             $destPath = $destDir . $fileName;
             if (move_uploaded_file($f['tmp_name'], $destPath)) {
                 $imagePath = '/students/images/' . $fileName;
+            } else {
+                flash_set('error', 'Failed to save the uploaded photo. Please check the students/images folder permissions.');
+                redirect('members.php');
             }
+        } else {
+            flash_set('error', 'Photo must be a JPG, PNG, WEBP, or GIF under 5MB.');
+            redirect('members.php');
         }
     }
 
     if ($name) {
-        if ($id > 0) {
-            if ($imagePath) {
-                $stmt = db()->prepare('UPDATE members SET name = ?, english_name = ?, group_name = ?, branch_id = ?, level_id = ?, is_active = ?, image_path = ? WHERE id = ? AND company_id = ?');
-                $stmt->execute([$name, $ename, $group, $branch ?: null, $level ?: null, $active, $imagePath, $id, $company['id']]);
+        try {
+            if ($id > 0) {
+                if ($imagePath) {
+                    $stmt = db()->prepare('UPDATE members SET name = ?, english_name = ?, group_name = ?, branch_id = ?, level_id = ?, is_active = ?, image_path = ? WHERE id = ? AND company_id = ?');
+                    $stmt->execute([$name, $ename, $group, $branch ?: null, $level ?: null, $active, $imagePath, $id, $company['id']]);
+                } else {
+                    $stmt = db()->prepare('UPDATE members SET name = ?, english_name = ?, group_name = ?, branch_id = ?, level_id = ?, is_active = ? WHERE id = ? AND company_id = ?');
+                    $stmt->execute([$name, $ename, $group, $branch ?: null, $level ?: null, $active, $id, $company['id']]);
+                }
+                flash_set('success', 'Member updated successfully.');
             } else {
-                $stmt = db()->prepare('UPDATE members SET name = ?, english_name = ?, group_name = ?, branch_id = ?, level_id = ?, is_active = ? WHERE id = ? AND company_id = ?');
-                $stmt->execute([$name, $ename, $group, $branch ?: null, $level ?: null, $active, $id, $company['id']]);
+                $stmt = db()->prepare('INSERT INTO members (company_id, name, english_name, group_name, branch_id, level_id, is_active, image_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                $stmt->execute([$company['id'], $name, $ename, $group, $branch ?: null, $level ?: null, $active, $imagePath]);
+                flash_set('success', 'New member added successfully.');
             }
-            flash_set('success', 'Member updated successfully.');
-        } else {
-            $stmt = db()->prepare('INSERT INTO members (company_id, name, english_name, group_name, branch_id, level_id, is_active, image_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$company['id'], $name, $ename, $group, $branch ?: null, $level ?: null, $active, $imagePath]);
-            flash_set('success', 'New member added successfully.');
+        } catch (PDOException $ex) {
+            error_log('[Members save] ' . $ex->getMessage());
+            flash_set('error', 'Could not save member: ' . $ex->getMessage());
         }
     }
     redirect('members.php');

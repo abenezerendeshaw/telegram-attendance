@@ -75,3 +75,16 @@ function get_company_by_id(int $id): ?array
     }
     return $row;
 }
+
+// ── Auto-migrate: make sure members.image_path exists ───────────────────
+// Runs the schema upgrade on first use so older deployments don't 500.
+function ensure_member_image_column(): void
+{
+    static $done = false;
+    if ($done) return;
+    $stmt = db()->query("SHOW COLUMNS FROM members LIKE 'image_path'");
+    if (!$stmt->fetch()) {
+        db()->exec("ALTER TABLE members ADD COLUMN image_path VARCHAR(500) DEFAULT NULL AFTER level_id");
+    }
+    $done = true;
+}

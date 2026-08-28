@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/db.php';
 
 set_cors();
+ensure_member_image_column();
 
 $slug = param('c');
 if (!$slug) json_out(['error' => 'Missing company slug'], 400);
