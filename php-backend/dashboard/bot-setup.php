@@ -56,6 +56,10 @@ include __DIR__ . '/_header.php';
 <div class="content">
   <?php if ($flash): ?><div class="alert alert-<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
 
+  <div class="alert alert-info">
+    💡 <strong>Default Specific Ethiopian Bot:</strong> If you leave the Bot Token empty, attendance messages are sent through the shared default bot. You only need to fill in the <strong>Main Chat/Channel ID</strong> (where the messages should arrive). Set your own token here only if you want a dedicated bot for your organization.
+  </div>
+
   <div class="card">
     <h2 class="card-title">Telegram Student/Employee Bot</h2>
     <p class="card-subtitle">This bot handles daily attendance marking, notifications, and receipts.</p>

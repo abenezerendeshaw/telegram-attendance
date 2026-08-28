@@ -5,8 +5,10 @@
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/telegram.php';
+require_once __DIR__ . '/../includes/sheets.php';
 
 set_cors();
+ensure_company_settings_columns();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_out(['error' => 'Method Not Allowed'], 405);
 
@@ -25,8 +27,14 @@ $imageData   = ''; // base64 data URI
 // Try JSON body first (React sends base64)
 $body = json_body();
 if ($body) {
-    $payerName   = trim($body['payerName']   ?? '');
-    $studentName = trim($body['studentName'] ?? '');
+    $payerName   = trim($body['payerName'] ?? '');
+    // Accept studentNames (array) or studentName (string)
+    $names = $body['studentNames'] ?? [];
+    if (is_string($names)) {
+        $names = array_map('trim', explode(',', $names));
+    }
+    $names = array_values(array_filter(array_map('trim', (array)$names), fn($n) => $n !== ''));
+    $studentName = $names ? implode(', ', $names) : trim($body['studentName'] ?? '');
     $imageData   = $body['imageData'] ?? '';
 }
 
@@ -92,6 +100,26 @@ if ($botToken && $chatId) {
             db()->prepare('UPDATE receipt_uploads SET telegram_message_id = ? WHERE file_path = ?')
                 ->execute([$tgResp['result']['message_id'], $company['slug'] . '/' . $fileName]);
         }
+    }
+}
+
+// ── Append to Google Sheets (optional) ────────────────────────────────────
+if ($company['enable_google_sheets'] && $company['google_sheet_id'] && $company['google_service_account_json']) {
+    $creds = parse_service_account($company['google_service_account_json']);
+    if ($creds) {
+        $tab = $company['google_sheet_receipt_tab'] ?: 'Receipts';
+        sheets_ensure_tab($creds, $company['google_sheet_id'], $tab);
+
+        $headers = ['ክፍያ ፈጻሚ (Payer)', 'ተማሪ(ዎች) (Student)', 'ቀን (Date)', 'ሰዓት (Time)'];
+        $existing = sheets_get($creds, $company['google_sheet_id'], sheets_range($tab, 'A1:D1'));
+        $first = $existing[0] ?? [];
+        if (trim((string)($first[0] ?? '')) === '') {
+            sheets_set_values($creds, $company['google_sheet_id'], sheets_range($tab, 'A1:D1'), [$headers]);
+        }
+
+        sheets_append($creds, $company['google_sheet_id'], sheets_range($tab, 'A:D'), [
+            [$payerName, $studentName, date('Y-m-d'), date('H:i:s')],
+        ]);
     }
 }
 

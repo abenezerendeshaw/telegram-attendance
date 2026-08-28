@@ -6,6 +6,11 @@
 define('BASE_PATH', '/evaluation');
 define('BASE_URL',  'https://specificethiopian.com' . BASE_PATH);
 
+// Default shared Specific Ethiopian bot token.
+// Used for all companies that have NOT set their own bot in "Telegram Bot".
+// Replace with the real token of the default @SpecificEthiopianBot.
+define('DEFAULT_BOT_TOKEN', '');
+
 // Generate a URL-safe slug from a string
 function slugify(string $text): string {
     $text = mb_strtolower(trim($text));

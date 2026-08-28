@@ -88,3 +88,23 @@ function ensure_member_image_column(): void
     }
     $done = true;
 }
+
+// ── Auto-migrate: make sure company_settings mini-app filter columns exist ─
+function ensure_company_settings_columns(): void
+{
+    static $done = false;
+    if ($done) return;
+    $stmt = db()->query("SHOW COLUMNS FROM company_settings LIKE 'webapp_branches'");
+    if (!$stmt->fetch()) {
+        db()->exec("ALTER TABLE company_settings ADD COLUMN webapp_branches VARCHAR(500) DEFAULT NULL");
+    }
+    $stmt = db()->query("SHOW COLUMNS FROM company_settings LIKE 'webapp_levels'");
+    if (!$stmt->fetch()) {
+        db()->exec("ALTER TABLE company_settings ADD COLUMN webapp_levels VARCHAR(500) DEFAULT NULL");
+    }
+    $stmt = db()->query("SHOW COLUMNS FROM company_settings LIKE 'google_sheet_receipt_tab'");
+    if (!$stmt->fetch()) {
+        db()->exec("ALTER TABLE company_settings ADD COLUMN google_sheet_receipt_tab VARCHAR(255) DEFAULT NULL");
+    }
+    $done = true;
+}

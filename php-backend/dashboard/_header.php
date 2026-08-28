@@ -11,7 +11,7 @@ $currentPath = basename($_SERVER['PHP_SELF']);
 </head>
 <body>
 <div class="layout">
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
       <div style="display:flex;align-items:center;gap:12px">
         <?php if (!empty($company['logo_path'])): ?>
@@ -70,6 +70,12 @@ $currentPath = basename($_SERVER['PHP_SELF']);
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
         Integrations
       </a>
+
+      <div class="nav-section-label" style="margin-top:16px">Mini App</div>
+      <a href="<?= BASE_PATH ?>/webapp.php" target="_blank" class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 17V7l6 5-6 5z"/></svg>
+        Open Mini App
+      </a>
     </nav>
     
     <div class="sidebar-footer">
@@ -80,9 +86,14 @@ $currentPath = basename($_SERVER['PHP_SELF']);
     </div>
   </aside>
 
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
   <main class="main">
     <div class="topbar">
-      <div class="topbar-title"><?= e($pageTitle ?? 'Dashboard') ?></div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">☰</button>
+        <div class="topbar-title"><?= e($pageTitle ?? 'Dashboard') ?></div>
+      </div>
       <div class="topbar-actions">
         <?php if (!empty($company['telegram_bot_token'])): ?>
           <span class="badge badge-green">Bot Connected</span>

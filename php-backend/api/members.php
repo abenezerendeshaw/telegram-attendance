@@ -7,6 +7,7 @@ require_once __DIR__ . '/../includes/db.php';
 
 set_cors();
 ensure_member_image_column();
+ensure_company_settings_columns();
 
 $slug = param('c');
 if (!$slug) json_out(['error' => 'Missing company slug'], 400);
@@ -14,16 +15,37 @@ if (!$slug) json_out(['error' => 'Missing company slug'], 400);
 $company = get_company_by_slug($slug);
 if (!$company) json_out(['error' => 'Company not found'], 404);
 
+// ── Mini app visibility filter (selected branches / levels) ───────────────
+$filterBranches = ($company['webapp_branches'] ?? '')
+    ? array_filter(array_map('trim', explode(',', $company['webapp_branches'])))
+    : [];
+$filterLevels = ($company['webapp_levels'] ?? '')
+    ? array_filter(array_map('trim', explode(',', $company['webapp_levels'])))
+    : [];
+
+$where = 'WHERE m.company_id = ? AND m.is_active = 1';
+$params = [$company['id']];
+if ($filterBranches) {
+    $placeholders = implode(',', array_fill(0, count($filterBranches), '?'));
+    $where .= " AND b.name IN ({$placeholders})";
+    $params = array_merge($params, array_values($filterBranches));
+}
+if ($filterLevels) {
+    $placeholders = implode(',', array_fill(0, count($filterLevels), '?'));
+    $where .= " AND l.name IN ({$placeholders})";
+    $params = array_merge($params, array_values($filterLevels));
+}
+
 $stmt = db()->prepare(
-    'SELECT m.id, m.name, m.english_name, m.group_name, m.member_type, m.image_path,
+    "SELECT m.id, m.name, m.english_name, m.group_name, m.member_type, m.image_path,
             b.name AS branch_name, l.name AS level_name
      FROM members m
      LEFT JOIN branches b ON b.id = m.branch_id
      LEFT JOIN levels l ON l.id = m.level_id
-     WHERE m.company_id = ? AND m.is_active = 1
-     ORDER BY m.group_name, m.name'
+     {$where}
+     ORDER BY m.group_name, m.name"
 );
-$stmt->execute([$company['id']]);
+$stmt->execute($params);
 $rows = $stmt->fetchAll();
 
 // Format to match the React app's expected structure

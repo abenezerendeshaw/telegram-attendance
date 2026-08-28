@@ -142,6 +142,9 @@ CREATE TABLE IF NOT EXISTS levels (
 -- ALTER TABLE company_settings ADD COLUMN google_sheet_tab VARCHAR(255) DEFAULT NULL AFTER google_sheet_id;
 -- ALTER TABLE company_settings ADD COLUMN google_sheet_branches VARCHAR(500) DEFAULT NULL AFTER google_sheet_tab;
 -- ALTER TABLE company_settings ADD COLUMN google_sheet_levels VARCHAR(500) DEFAULT NULL AFTER google_sheet_branches;
+-- ALTER TABLE company_settings ADD COLUMN webapp_branches VARCHAR(500) DEFAULT NULL AFTER google_sheet_levels;
+-- ALTER TABLE company_settings ADD COLUMN webapp_levels VARCHAR(500) DEFAULT NULL AFTER webapp_branches;
+-- ALTER TABLE company_settings ADD COLUMN google_sheet_receipt_tab VARCHAR(255) DEFAULT NULL AFTER google_sheet_levels;
 -- ALTER TABLE members ADD COLUMN branch_id   INT DEFAULT NULL AFTER group_name;
 -- ALTER TABLE members ADD COLUMN level_id    INT DEFAULT NULL AFTER branch_id;
 -- ALTER TABLE members ADD COLUMN image_path  VARCHAR(500) DEFAULT NULL AFTER level_id;

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/sheets.php';
 $company = require_auth();
 $flash   = flash_get();
 $pageTitle = 'Integrations';
+ensure_company_settings_columns();
 
 // ── Fetch branches & levels for filtering ────────────────────────────────
 $stmt = db()->prepare('SELECT name FROM branches WHERE company_id = ? ORDER BY name ASC');
@@ -29,6 +30,7 @@ if (is_post()) {
         $eSheets = isset($_POST['enable_google_sheets']) ? 1 : 0;
         $sId     = trim($_POST['google_sheet_id'] ?? '');
         $sTab    = trim($_POST['google_sheet_tab'] ?? '');
+        $sRecTab = trim($_POST['google_sheet_receipt_tab'] ?? '');
         $sJson   = trim($_POST['google_service_account_json'] ?? '');
         $sBranches = $_POST['google_sheet_branches'] ?? [];
         $sLevels   = $_POST['google_sheet_levels'] ?? [];
@@ -40,32 +42,34 @@ if (is_post()) {
 
         if ($sJson) {
             $stmt = db()->prepare(
-                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id, google_sheet_tab, google_sheet_branches, google_sheet_levels, google_service_account_json)
+                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id, google_sheet_tab, google_sheet_receipt_tab, google_sheet_branches, google_sheet_levels, google_service_account_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                 enable_google_sheets = VALUES(enable_google_sheets),
+                 google_sheet_id = VALUES(google_sheet_id),
+                 google_sheet_tab = VALUES(google_sheet_tab),
+                 google_sheet_receipt_tab = VALUES(google_sheet_receipt_tab),
+                 google_sheet_branches = VALUES(google_sheet_branches),
+                 google_sheet_levels = VALUES(google_sheet_levels),
+                 google_service_account_json = VALUES(google_service_account_json)'
+            );
+            $stmt->execute([$company['id'], $eSheets, $sId, $sTab, $sRecTab ?: null, $branchesStr, $levelsStr, $sJson]);
+        } else {
+            $stmt = db()->prepare(
+                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id, google_sheet_tab, google_sheet_receipt_tab, google_sheet_branches, google_sheet_levels)
                  VALUES (?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                  enable_google_sheets = VALUES(enable_google_sheets),
                  google_sheet_id = VALUES(google_sheet_id),
                  google_sheet_tab = VALUES(google_sheet_tab),
-                 google_sheet_branches = VALUES(google_sheet_branches),
-                 google_sheet_levels = VALUES(google_sheet_levels),
-                 google_service_account_json = VALUES(google_service_account_json)'
-            );
-            $stmt->execute([$company['id'], $eSheets, $sId, $sTab, $branchesStr, $levelsStr, $sJson]);
-        } else {
-            $stmt = db()->prepare(
-                'INSERT INTO company_settings (company_id, enable_google_sheets, google_sheet_id, google_sheet_tab, google_sheet_branches, google_sheet_levels)
-                 VALUES (?, ?, ?, ?, ?, ?)
-                 ON DUPLICATE KEY UPDATE
-                 enable_google_sheets = VALUES(enable_google_sheets),
-                 google_sheet_id = VALUES(google_sheet_id),
-                 google_sheet_tab = VALUES(google_sheet_tab),
+                 google_sheet_receipt_tab = VALUES(google_sheet_receipt_tab),
                  google_sheet_branches = VALUES(google_sheet_branches),
                  google_sheet_levels = VALUES(google_sheet_levels)'
             );
-            $stmt->execute([$company['id'], $eSheets, $sId, $sTab, $branchesStr, $levelsStr]);
+            $stmt->execute([$company['id'], $eSheets, $sId, $sTab, $sRecTab ?: null, $branchesStr, $levelsStr]);
         }
 
-        // If sheets are enabled, try to create the tab (verify credentials work too)
+        // If sheets are enabled, try to create the tabs (verify credentials work too)
         $sheetNote = '';
         if ($eSheets && $sId && $sJson) {
             $creds = parse_service_account($sJson);
@@ -77,6 +81,12 @@ if (is_post()) {
                     $sheetNote = " Sheet \"{$sTab}\" already exists and will be used.";
                 } else {
                     $sheetNote = ' Could not reach the spreadsheet — check the Sheet ID, service account JSON, and that you shared the sheet with the service account client_email.';
+                }
+                if ($sRecTab !== '') {
+                    $rRes = sheets_ensure_tab($creds, $sId, $sRecTab);
+                    $sheetNote .= $rRes['created']
+                        ? " Receipt tab \"{$sRecTab}\" was created."
+                        : ($rRes['exists'] ? " Receipt tab \"{$sRecTab}\" already exists." : '');
                 }
             }
         }
@@ -134,6 +144,12 @@ include __DIR__ . '/_header.php';
         <label class="form-label">Sheet Name (Tab) — auto-created</label>
         <input class="form-input" type="text" name="google_sheet_tab" value="<?= e($company['google_sheet_tab'] ?? $company['name']) ?>" placeholder="<?= e($company['name']) ?>">
         <div class="form-hint">The tab inside your spreadsheet where attendance is written. Defaults to your Organization Name. It is created automatically when you save.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Receipt Sheet Name (Tab) — auto-created</label>
+        <input class="form-input" type="text" name="google_sheet_receipt_tab" value="<?= e($company['google_sheet_receipt_tab'] ?? 'Receipts') ?>" placeholder="Receipts">
+        <div class="form-hint">The tab where payment receipts are recorded. Defaults to "Receipts". It is created automatically when you save.</div>
       </div>
 
       <div class="divider"></div>

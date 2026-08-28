@@ -141,7 +141,7 @@ $stmt->execute([
 ]);
 
 // ── Send Telegram notification ────────────────────────────────────────────
-$botToken = $company['telegram_bot_token'] ?? '';
+$botToken = $company['telegram_bot_token'] ?: DEFAULT_BOT_TOKEN;
 $chatId   = $company['telegram_chat_id']   ?? '';
 
 if ($botToken && $chatId) {

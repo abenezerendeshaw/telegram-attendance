@@ -5,9 +5,9 @@ import axios from "axios";
 // Base API URL for the PHP Backend
 const API_BASE = "https://specificethiopian.com/evaluation/api";
 
-// Get company slug from URL (?c=slug)
+// Get company slug from URL (?c=slug) or localStorage (persisted login)
 const urlParams = new URLSearchParams(window.location.search);
-const companySlug = urlParams.get('c') || '';
+const initialSlug = urlParams.get('c') || localStorage.getItem('se_company_slug') || '';
 
 const GLOBAL_CSS = `
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -27,7 +27,16 @@ export default function App() {
   // Multi-tenant state
   const [studentsList, setStudentsList] = useState([]);
   const [config, setConfig] = useState(null);
-  const [isInitializing, setIsInitializing] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(!!initialSlug);
+
+  // Company slug: from URL first, else persisted login
+  const [companySlug, setCompanySlug] = useState(initialSlug);
+
+  // Login state (single default Specific Ethiopian bot)
+  const [loginUser, setLoginUser] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
 
   // 24-hour Lock State
   const [isLocked, setIsLocked] = useState(false);
@@ -69,6 +78,9 @@ export default function App() {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setIsOpen(false);
       }
+      if (receiptPickerRef.current && !receiptPickerRef.current.contains(e.target)) {
+        setReceiptPickerOpen(false);
+      }
     };
     document.addEventListener("pointerdown", handleClickOutside);
 
@@ -84,10 +96,13 @@ export default function App() {
   // Fetch configuration and members
   useEffect(() => {
     if (!companySlug) {
+      setConfig(null);
+      setStudentsList([]);
       setIsInitializing(false);
       return;
     }
 
+    setIsInitializing(true);
     const loadData = async () => {
       try {
         const [confRes, memRes] = await Promise.all([
@@ -98,12 +113,46 @@ export default function App() {
         setStudentsList(memRes.data.members || []);
       } catch (e) {
         console.error("Failed to load company data:", e);
+        setConfig(null);
       } finally {
         setIsInitializing(false);
       }
     };
     loadData();
-  }, []);
+  }, [companySlug]);
+
+  // Login via the shared Specific Ethiopian bot (username + password)
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!loginUser.trim() || !loginPass) {
+      setLoginError("Please enter your username and password.");
+      return;
+    }
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const res = await axios.post(`${API_BASE}/login.php`, {
+        username: loginUser.trim(),
+        password: loginPass,
+      });
+      localStorage.setItem("se_company_slug", res.data.slug);
+      setCompanySlug(res.data.slug);
+    } catch (err) {
+      setLoginError(
+        err.response?.data?.error || "Login failed. Please try again."
+      );
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("se_company_slug");
+    setCompanySlug("");
+    setSelectedStudent(null);
+    setSearchTerm("");
+    setStatus({ type: "", message: "" });
+  };
 
   const filteredStudents = studentsList.filter((s) => {
     const query = searchTerm.toLowerCase().trim();
@@ -223,10 +272,14 @@ export default function App() {
 
   const [mode, setMode] = useState("attendance");
   const [receiptPayerName, setReceiptPayerName] = useState("");
-  const [receiptStudentName, setReceiptStudentName] = useState("");
+  const [receiptStudents, setReceiptStudents] = useState([]);
+  const [receiptStudentSearch, setReceiptStudentSearch] = useState("");
+  const [receiptPickerOpen, setReceiptPickerOpen] = useState(false);
   const [receiptImageData, setReceiptImageData] = useState("");
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptStatusMsg, setReceiptStatusMsg] = useState({ type: "", message: "" });
+
+  const receiptPickerRef = useRef(null);
 
   // ---------- Improved Receipt Handlers ----------
   const handleFileChange = (e) => {
@@ -271,7 +324,7 @@ export default function App() {
   const handleReceiptSubmit = async (e) => {
     e.preventDefault();
     // Validation
-    if (!receiptPayerName.trim() || !receiptStudentName.trim() || !receiptImageData) {
+    if (!receiptPayerName.trim() || receiptStudents.length === 0 || !receiptImageData) {
       setReceiptStatusMsg({ type: "error", message: "ሁሉም መስኮች አስፈላጊ ናቸው።" });
       return;
     }
@@ -280,12 +333,13 @@ export default function App() {
     try {
       await axios.post(`${API_BASE}/receipt.php?c=${companySlug}`, {
         payerName: receiptPayerName,
-        studentName: receiptStudentName,
+        studentNames: receiptStudents.map((s) => s.name),
         imageData: receiptImageData,
       });
       setReceiptStatusMsg({ type: "success", message: "✅ ደረሰኙ በተሳካ ሁኔታ ተልኳል።" });
       setReceiptPayerName("");
-      setReceiptStudentName("");
+      setReceiptStudents([]);
+      setReceiptStudentSearch("");
       setReceiptImageData("");
       // Reset file input
       const input = document.getElementById("receiptFileInput");
@@ -296,6 +350,20 @@ export default function App() {
     } finally {
       setReceiptLoading(false);
     }
+  };
+
+  const filteredReceiptStudents = studentsList.filter((s) => {
+    const q = receiptStudentSearch.toLowerCase().trim();
+    if (!q) return true;
+    return s.name.includes(q) || s.englishName?.toLowerCase().includes(q);
+  });
+
+  const toggleReceiptStudent = (st) => {
+    setReceiptStudents((prev) =>
+      prev.some((x) => x.name === st.name)
+        ? prev.filter((x) => x.name !== st.name)
+        : [...prev, st]
+    );
   };
 
   const footerBar = (
@@ -331,7 +399,7 @@ export default function App() {
     );
   }
 
-  // ---------- No org / invalid link: Sign in / Sign up ----------
+  // ---------- No org loaded: login (shared Specific Ethiopian bot) ----------
   if (!companySlug || !config) {
     return (
       <div style={styles.app}>
@@ -343,18 +411,72 @@ export default function App() {
             <div style={styles.brandMark}>📋</div>
           </div>
           <div style={styles.content}>
-            <h1 style={styles.title}>Attendance Mini App</h1>
-            <p style={styles.subtitle}>
-              Sign in to your organization account, or register a new organization, to start using the attendance system.
-            </p>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 20 }}>
-              <a href="https://specificethiopian.com/evaluation/login.php" style={{...styles.primaryBtn, textDecoration: 'none', backgroundColor: '#d97706', backgroundImage: "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0))"}}>
-                Sign In
-              </a>
-              <a href="https://specificethiopian.com/evaluation/register.php" style={{...styles.secondaryBtn, textDecoration: 'none'}}>
-                Sign Up
-              </a>
-            </div>
+            {companySlug ? (
+              <>
+                <h1 style={styles.title}>Organization Not Found</h1>
+                <p style={styles.subtitle}>We couldn't find this organization. It may have been removed or the link is invalid.</p>
+                <button type="button" onClick={handleLogout} style={{...styles.secondaryBtn, width: "100%"}}>
+                  ← Sign in with a different account
+                </button>
+              </>
+            ) : (
+              <>
+                <h1 style={styles.title}>Sign In</h1>
+                <p style={styles.subtitle}>Enter your organization credentials to access the attendance system.</p>
+                <form onSubmit={handleLogin} style={styles.form}>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Username</label>
+                    <input
+                      type="text"
+                      value={loginUser}
+                      onChange={(e) => {
+                        setLoginUser(e.target.value);
+                        if (loginError) setLoginError("");
+                      }}
+                      placeholder="your-username"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      style={styles.input}
+                      required
+                    />
+                  </div>
+                  <div style={styles.field}>
+                    <label style={styles.label}>Password</label>
+                    <input
+                      type="password"
+                      value={loginPass}
+                      onChange={(e) => {
+                        setLoginPass(e.target.value);
+                        if (loginError) setLoginError("");
+                      }}
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                      style={styles.input}
+                      required
+                    />
+                  </div>
+
+                  {loginError && <p style={styles.errorMsg}>{loginError}</p>}
+
+                  <button
+                    type="submit"
+                    disabled={loginLoading}
+                    style={{...styles.primaryBtn, width: "100%", backgroundColor: '#d97706', backgroundImage: "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0))", opacity: loginLoading ? 0.6 : 1}}
+                  >
+                    {loginLoading ? (
+                      <span style={styles.btnSpinnerWrap}><span style={styles.spinner} /></span>
+                    ) : null}
+                    {loginLoading ? "Signing in…" : "Sign In →"}
+                  </button>
+                </form>
+                <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: '#9aa0ae' }}>
+                  Don't have an account?{" "}
+                  <a href="https://specificethiopian.com/evaluation/register.php" target="_blank" rel="noopener" style={{color: '#d97706', textDecoration: 'none', fontWeight: 600}}>
+                    Register your organization
+                  </a>
+                </div>
+              </>
+            )}
           </div>
           {footerBar}
         </div>
@@ -631,18 +753,88 @@ export default function App() {
                     />
                   </div>
 
-                  <div style={styles.field}>
-                    <label style={styles.label}>የተከፈለለት ተማሪ ስም <span style={{ color: '#ff6b6b' }}>*</span></label>
-                    <input
-                      value={receiptStudentName}
-                      onChange={(e) => {
-                        setReceiptStudentName(e.target.value);
-                        if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
-                      }}
-                      style={styles.input}
-                      placeholder="ክፍያ የተፈጸመለትን ተማሪ ስም ያስገቡ"
-                      required
-                    />
+                  {/* Student Names — searchable multi-select */}
+                  <div style={styles.field} ref={receiptPickerRef}>
+                    <label style={styles.label}>የተከፈለለት ተማሪ(ዎች) <span style={{ color: '#ff6b6b' }}>*</span></label>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type="text"
+                        value={receiptStudentSearch}
+                        onChange={(e) => {
+                          setReceiptStudentSearch(e.target.value);
+                          setReceiptPickerOpen(true);
+                          if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
+                        }}
+                        onFocus={() => setReceiptPickerOpen(true)}
+                        placeholder="ተማሪ ፈልግና ምረጥ / Search & select students"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck="false"
+                        style={styles.input}
+                      />
+                      {receiptPickerOpen && (
+                        <ul style={{...styles.dropdownList, maxHeight: 220}}>
+                          {filteredReceiptStudents.length > 0 ? (
+                            filteredReceiptStudents.slice(0, 30).map((st, idx) => {
+                              const isSelected = receiptStudents.some((x) => x.name === st.name);
+                              return (
+                                <li
+                                  key={idx}
+                                  onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    toggleReceiptStudent(st);
+                                  }}
+                                  style={{...styles.dropdownItem, backgroundColor: isSelected ? "rgba(217,119,6,0.14)" : "transparent"}}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    readOnly
+                                    style={{ accentColor: primary, width: 16, height: 16, flexShrink: 0, pointerEvents: "none" }}
+                                  />
+                                  {st.image ? (
+                                    <img src={st.image} alt={st.name} style={styles.dropdownThumb} />
+                                  ) : (
+                                    <span style={styles.dropdownThumb}>👤</span>
+                                  )}
+                                  <span style={styles.dropdownInfo}>
+                                    <span style={{ fontWeight: "600" }}>{st.name}</span>
+                                    <span style={styles.dropdownTags}>
+                                      <span style={styles.groupSubTag}>{st.group}</span>
+                                      {st.branch && <span style={styles.branchSubTag}>{st.branch}</span>}
+                                      {st.level && <span style={styles.levelSubTag}>{st.level}</span>}
+                                    </span>
+                                  </span>
+                                </li>
+                              );
+                            })
+                          ) : (
+                            <li style={styles.noResultItem}>ምንም አልተገኘም (No match found)</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                    {receiptStudents.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, justifyContent: "flex-start" }}>
+                        {receiptStudents.map((st) => (
+                          <span key={st.name} style={styles.receiptTag}>
+                            {st.name}
+                            <button
+                              type="button"
+                              onClick={() => toggleReceiptStudent(st)}
+                              style={styles.receiptTagX}
+                              aria-label="Remove"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 12, color: "#7c8290" }}>
+                      You can select multiple students — search again to add more.
+                    </div>
                   </div>
 
                   <div style={styles.field}>
@@ -1180,6 +1372,33 @@ const styles = {
   },
 
   // ---------- Receipt Upload ----------
+  receiptTag: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 10px",
+    borderRadius: "999px",
+    backgroundColor: "rgba(217,119,6,0.14)",
+    border: "1px solid rgba(217,119,6,0.35)",
+    color: "#fbbf24",
+    fontSize: 13,
+    fontWeight: 500,
+  },
+  receiptTagX: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 18,
+    height: 18,
+    borderRadius: "50%",
+    border: "none",
+    background: "rgba(0,0,0,0.3)",
+    color: "#fff",
+    fontSize: 13,
+    lineHeight: 1,
+    cursor: "pointer",
+    padding: 0,
+  },
   uploadArea: {
     position: "relative",
     border: "2px dashed rgba(255,255,255,0.12)",

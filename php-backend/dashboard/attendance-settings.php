@@ -5,6 +5,24 @@ require_once __DIR__ . '/../includes/auth.php';
 $company = require_auth();
 $flash   = flash_get();
 $pageTitle = 'Attendance Rules';
+ensure_company_settings_columns();
+
+// Fetch branches & levels for the mini app filter
+$stmt = db()->prepare('SELECT name FROM branches WHERE company_id = ? ORDER BY name ASC');
+$stmt->execute([$company['id']]);
+$branches = array_column($stmt->fetchAll(), 'name');
+
+$stmt = db()->prepare('SELECT name FROM levels WHERE company_id = ? ORDER BY name ASC');
+$stmt->execute([$company['id']]);
+$levels = array_column($stmt->fetchAll(), 'name');
+
+// Currently selected mini-app filters (comma-separated in DB)
+$selWebBranches = $company['webapp_branches']
+    ? array_filter(array_map('trim', explode(',', $company['webapp_branches'])))
+    : [];
+$selWebLevels = $company['webapp_levels']
+    ? array_filter(array_map('trim', explode(',', $company['webapp_levels'])))
+    : [];
 
 if (is_post()) {
     try {
@@ -28,10 +46,17 @@ if (is_post()) {
         }
         $cDays = implode(',', $days) ?: '1,3,5';
 
+        $webBranches = isset($_POST['webapp_branches']) && is_array($_POST['webapp_branches'])
+            ? implode(',', array_map('trim', array_filter($_POST['webapp_branches'])))
+            : '';
+        $webLevels = isset($_POST['webapp_levels']) && is_array($_POST['webapp_levels'])
+            ? implode(',', array_map('trim', array_filter($_POST['webapp_levels'])))
+            : '';
+
         $stmt = db()->prepare(
             'INSERT INTO company_settings 
-             (company_id, class_lat, class_lng, max_distance_meters, disable_gps_check, attendance_window_start, attendance_window_end, class_days, allow_offtime_submission, allow_multiple_submissions, enable_receipt_upload)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             (company_id, class_lat, class_lng, max_distance_meters, disable_gps_check, attendance_window_start, attendance_window_end, class_days, allow_offtime_submission, allow_multiple_submissions, enable_receipt_upload, webapp_branches, webapp_levels)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
              class_lat = VALUES(class_lat),
              class_lng = VALUES(class_lng),
@@ -42,14 +67,17 @@ if (is_post()) {
              class_days = VALUES(class_days),
              allow_offtime_submission = VALUES(allow_offtime_submission),
              allow_multiple_submissions = VALUES(allow_multiple_submissions),
-             enable_receipt_upload = VALUES(enable_receipt_upload)'
+             enable_receipt_upload = VALUES(enable_receipt_upload),
+             webapp_branches = VALUES(webapp_branches),
+             webapp_levels = VALUES(webapp_levels)'
         );
         
         $stmt->execute([
             $company['id'],
             $cLat ?: null, $cLng ?: null, $dist, $dGps,
             $wStart, $wEnd, $cDays,
-            $dOff, $dMult, $dRec
+            $dOff, $dMult, $dRec,
+            $webBranches ?: null, $webLevels ?: null
         ]);
         
         flash_set('success', 'Attendance rules updated.');
@@ -164,6 +192,48 @@ include __DIR__ . '/_header.php';
         <label class="toggle <?= $company['enable_receipt_upload'] ? 'on' : '' ?>">
           <input type="checkbox" name="enable_receipt_upload" class="toggle-input" value="1" <?= $company['enable_receipt_upload'] ? 'checked' : '' ?> onchange="this.parentElement.classList.toggle('on', this.checked)">
         </label>
+      </div>
+    </div>
+
+    <!-- Mini App Member Filter -->
+    <div class="card">
+      <h3 class="section-title">Mini App Visibility Filter</h3>
+      <p class="section-sub">Choose which branches and levels should appear in the mini app. Leave empty to show all <?= e(member_type_label($company['member_type'] ?? 'student', true)) ?>s.</p>
+
+      <div class="form-group">
+        <label class="form-label">Branches / Locations to Show (optional)</label>
+        <?php if (empty($branches)): ?>
+          <div class="form-hint">No branches yet. You can create them under <a href="branches.php" style="color:var(--blue)">Branches & Levels</a>.</div>
+        <?php else: ?>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <?php foreach ($branches as $b): ?>
+              <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
+                <input type="checkbox" name="webapp_branches[]" value="<?= e($b) ?>" style="accent-color:var(--accent)"
+                  <?= in_array($b, $selWebBranches, true) ? 'checked' : '' ?>>
+                🏢 <?= e($b) ?>
+              </label>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+        <div class="form-hint">Leave empty to show all branches in the mini app.</div>
+      </div>
+
+      <div class="form-group" style="border:none">
+        <label class="form-label">Levels / Grades / Sections to Show (optional)</label>
+        <?php if (empty($levels)): ?>
+          <div class="form-hint">No levels yet. You can create them under <a href="branches.php" style="color:var(--blue)">Branches & Levels</a>.</div>
+        <?php else: ?>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <?php foreach ($levels as $lvl): ?>
+              <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:0.9rem">
+                <input type="checkbox" name="webapp_levels[]" value="<?= e($lvl) ?>" style="accent-color:var(--accent)"
+                  <?= in_array($lvl, $selWebLevels, true) ? 'checked' : '' ?>>
+                🎓 <?= e($lvl) ?>
+              </label>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+        <div class="form-hint">Leave empty to show all levels in the mini app.</div>
       </div>
     </div>
 

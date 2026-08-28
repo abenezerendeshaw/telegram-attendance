@@ -104,7 +104,7 @@ include __DIR__ . '/_header.php';
       <p class="card-subtitle">Add or edit your <?= e(member_type_label($company['member_type'] ?? 'student', true)) ?>s list</p>
     </div>
     <div class="topbar-actions">
-      <!-- We could link to members-import.php for CSV bulk upload here -->
+      <a href="members-import.php" class="btn btn-secondary">Import</a>
       <button class="btn btn-primary" onclick="openModal()">+ Add New Member</button>
     </div>
   </div>
@@ -112,6 +112,10 @@ include __DIR__ . '/_header.php';
   <?php if ($flash): ?><div class="alert alert-<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
 
   <div class="card p-0">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="memberSearch" type="search" class="form-input" placeholder="Search by name, English name, or group…" style="flex:1;min-width:180px" onkeyup="filterMembers()">
+      <span id="memberCount" class="badge badge-gray"><?= count($members) ?> total</span>
+    </div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -126,9 +130,9 @@ include __DIR__ . '/_header.php';
             <th class="text-right">Actions</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="membersTbody">
           <?php foreach ($members as $m): ?>
-          <tr>
+          <tr data-search="<?= e(mb_strtolower(implode(' ', array_filter([$m['name'], $m['english_name'], $m['group_name'], $m['branch_name'], $m['level_name']])))) ?>">
             <td>
               <?php if ($m['image_path']): ?>
                 <img src="<?= BASE_PATH ?>/students/images/<?= e(basename($m['image_path'])) ?>" alt="<?= e($m['name']) ?>" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">
@@ -174,7 +178,7 @@ include __DIR__ . '/_header.php';
             </td>
           </tr>
           <?php endforeach; if (empty($members)): ?>
-          <tr><td colspan="8" class="text-center" style="padding:40px;color:var(--text2)">No members found. Add one above.</td></tr>
+          <tr id="memberEmptyRow" <?= $members ? 'style="display:none"' : '' ?>><td colspan="8" class="text-center" style="padding:40px;color:var(--text2)">No members found. Add one above.</td></tr>
           <?php endif; ?>
         </tbody>
       </table>
@@ -323,6 +327,31 @@ function editModal(data) {
 
 function closeModal() {
     modal.style.display = 'none';
+}
+
+function filterMembers() {
+    const q = document.getElementById('memberSearch').value.toLowerCase().trim();
+    const rows = document.querySelectorAll('#membersTbody tr[data-search]');
+    const countEl = document.getElementById('memberCount');
+    const emptyRow = document.getElementById('memberEmptyRow');
+    let visible = 0;
+
+    rows.forEach(row => {
+        const hit = !q || row.getAttribute('data-search').includes(q);
+        row.style.display = hit ? '' : 'none';
+        if (hit) visible++;
+    });
+
+    if (countEl) countEl.textContent = visible + ' shown';
+    if (emptyRow) {
+        const label = emptyRow.querySelector('td');
+        if (visible === 0) {
+            emptyRow.style.display = '';
+            label.textContent = q ? 'No members match your search.' : 'No members found. Add one above.';
+        } else {
+            emptyRow.style.display = 'none';
+        }
+    }
 }
 </script>
 
