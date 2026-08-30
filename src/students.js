@@ -206,7 +206,7 @@ export const STUDENTS = [
   { name: "ሩሃማ መኮንን", englishName: "ruhama mekonnen", group: "ቡድን 4: ቤተ እንዚራ" },
   { name: "ቅድስት አለማየሁ", englishName: "kidist alemayehu", group: "ቡድን 4: ቤተ እንዚራ" },
   { name: "የምስራች አለሙ", englishName: "yemisrach alemu", group: "ቡድን 4: ቤተ እንዚራ" },
-  { name: "አዶኒያስ ሳህሌ", englishName: "adoniyas sahle adonias", group: "ቡድን 4: ቤተ እንዚራ" },
+  { name: "አዶኒያስ ሳህሌ", englishName: "adoniyas sahle", group: "ቡድን 4: ቤተ እንዚራ" },
 
 
 
@@ -217,7 +217,7 @@ export const STUDENTS = [
 
      { name: "ማህደር ቶሎሳ", englishName: "mahder tolosa", group: "ቡድን 4: ቤተ እንዚራ" },
 
-       { name: "አለም ጌቱ", englishName: "alem getu", group: "ቡድን 4: ቤተ እንዚራ" },
+    { name: "አለም ጌቱ", englishName: "alem getu", group: "ቡድን 4: ቤተ እንዚራ" },
 
     { name: "አማኑኤል ዘለቀ", englishName: "amanuel zeleke", group: "ቡድን 4: ቤተ እንዚራ" },
       
