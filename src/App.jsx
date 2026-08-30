@@ -1,19 +1,7 @@
 // src/App.jsx
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-
-// Base API URL for the PHP Backend
-const API_BASE = "https://specificethiopian.com/evaluation/api";
-
-// Get company slug from URL (?c=slug) or localStorage (persisted login)
-const urlParams = new URLSearchParams(window.location.search);
-const initialSlug = urlParams.get('c') || localStorage.getItem('se_company_slug') || '';
-
-const GLOBAL_CSS = `
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-  @keyframes glowPulse { 0%, 100% { opacity: .5; } 50% { opacity: .9; } }
-`;
+import { STUDENTS } from "./students";
 
 export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,20 +11,6 @@ export default function App() {
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ type: "", message: "" });
-
-  // Multi-tenant state
-  const [studentsList, setStudentsList] = useState([]);
-  const [config, setConfig] = useState(null);
-  const [isInitializing, setIsInitializing] = useState(!!initialSlug);
-
-  // Company slug: from URL first, else persisted login
-  const [companySlug, setCompanySlug] = useState(initialSlug);
-
-  // Login state (single default Specific Ethiopian bot)
-  const [loginUser, setLoginUser] = useState("");
-  const [loginPass, setLoginPass] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState("");
 
   // 24-hour Lock State
   const [isLocked, setIsLocked] = useState(false);
@@ -50,38 +24,31 @@ export default function App() {
     window.location.hash.includes("admin") ||
     new URLSearchParams(window.location.search).get("admin") === "1";
 
-  const primary = config?.primaryColor || "#d97706";
-
-  // ── Re-usable lock checker (called on mount AND after each config load) ──
-  const checkLockStatus = () => {
-    if (isAdminMode) return; // admin mode skips all locks
-    const lastSubmission = localStorage.getItem("last_attendance_timestamp");
-    if (lastSubmission) {
-      const now = Date.now();
-      const timePassed = now - parseInt(lastSubmission, 10);
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      if (timePassed < twentyFourHours) {
-        const remainingMs = twentyFourHours - timePassed;
-        setIsLocked(true);
-        setHoursLeft(Math.ceil(remainingMs / (1000 * 60 * 60)));
-      } else {
-        setIsLocked(false);
-      }
-    } else {
-      setIsLocked(false);
-    }
-  };
-
-  // ── On mount: check lock, set up click-outside listener, init Telegram ───
   useEffect(() => {
+    const checkLockStatus = () => {
+      // Skip localStorage lock entirely in admin mode
+      if (isAdminMode) return;
+
+      const lastSubmission = localStorage.getItem("last_attendance_timestamp");
+      if (lastSubmission) {
+        const now = Date.now();
+        const timePassed = now - parseInt(lastSubmission, 10);
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+        if (timePassed < twentyFourHours) {
+          const remainingMs = twentyFourHours - timePassed;
+          const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+          setIsLocked(true);
+          setHoursLeft(remainingHours);
+        } else {
+          setIsLocked(false);
+        }
+      }
+    };
     checkLockStatus();
 
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setIsOpen(false);
-      }
-      if (receiptPickerRef.current && !receiptPickerRef.current.contains(e.target)) {
-        setReceiptPickerOpen(false);
       }
     };
     document.addEventListener("pointerdown", handleClickOutside);
@@ -95,141 +62,29 @@ export default function App() {
     return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, []);
 
-  // Fetch configuration and members
+  // On first client load, call the init endpoint once to ensure Sheets tabs exist.
   useEffect(() => {
-    if (!companySlug) {
-      setConfig(null);
-      setStudentsList([]);
-      setIsInitializing(false);
-      return;
-    }
-
-    setIsInitializing(true);
-    const loadData = async () => {
+    const initFlag = localStorage.getItem("tg_attendance_init_done");
+    if (initFlag) return;
+    const doInit = async () => {
       try {
-        const [confRes, memRes] = await Promise.all([
-          axios.get(`${API_BASE}/config.php?c=${companySlug}`),
-          axios.get(`${API_BASE}/members.php?c=${companySlug}`)
-        ]);
-        const cfg = confRes.data;
-        setConfig(cfg);
-        setStudentsList(memRes.data.members || []);
-
-        // Re-check the 24-hr lock every time a company config loads
-        checkLockStatus();
-
-        // Proactively init Telegram LocationManager so the permission
-        // dialog appears right away (not only when the user hits Submit).
-        // Only do this when GPS checking is enabled for this company.
-        const gpsRequired = !cfg.disableGpsCheck && (cfg.classLat || cfg.classLng);
-        if (gpsRequired && window.Telegram?.WebApp?.LocationManager) {
-          const lm = window.Telegram.WebApp.LocationManager;
-          if (!lm.isInited) {
-            lm.init(() => {
-              console.log("[TG LocationManager] inited, available:", lm.isLocationAvailable);
-            });
-          }
-        }
+        await axios.post("/api/init");
+        localStorage.setItem("tg_attendance_init_done", "1");
+        console.log("Init endpoint called successfully");
       } catch (e) {
-        console.error("Failed to load company data:", e);
-        setConfig(null);
-      } finally {
-        setIsInitializing(false);
+        console.warn("Init endpoint failed or not configured:", e?.response?.data || e.message);
       }
     };
-    loadData();
-  }, [companySlug]);
+    doInit();
+  }, []);
 
-  // Login via the shared Specific Ethiopian bot (username + password)
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (!loginUser.trim() || !loginPass) {
-      setLoginError("Please enter your username and password.");
-      return;
-    }
-    setLoginLoading(true);
-    setLoginError("");
-    try {
-      const res = await axios.post(`${API_BASE}/login.php`, {
-        username: loginUser.trim(),
-        password: loginPass,
-      });
-      localStorage.setItem("se_company_slug", res.data.slug);
-      setCompanySlug(res.data.slug);
-    } catch (err) {
-      setLoginError(
-        err.response?.data?.error || "Login failed. Please try again."
-      );
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("se_company_slug");
-    setCompanySlug("");
-    setSelectedStudent(null);
-    setSearchTerm("");
-    setStatus({ type: "", message: "" });
-  };
-
-  const filteredStudents = studentsList.filter((s) => {
+  const filteredStudents = STUDENTS.filter((s) => {
     const query = searchTerm.toLowerCase().trim();
     if (!query) return true;
     const matchesAmharic = s.name.includes(query);
     const matchesEnglish = s.englishName?.toLowerCase().includes(query);
     return matchesAmharic || matchesEnglish;
   });
-
-  // ── Location helper ──────────────────────────────────────────────────────
-  // Uses Telegram.WebApp.LocationManager when inside Telegram (so the native
-  // permission dialog actually appears), falls back to navigator.geolocation
-  // in regular browsers.
-  const getLocation = () =>
-    new Promise((resolve, reject) => {
-      const tgLm = window.Telegram?.WebApp?.LocationManager;
-
-      if (tgLm) {
-        // Make sure the manager is initialised first
-        const doRequest = () => {
-          if (!tgLm.isLocationAvailable) {
-            reject(new Error("እባክዎ ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።"));
-            return;
-          }
-          tgLm.getLocation((loc) => {
-            if (!loc) {
-              reject(new Error("ቦታዎን ማግኘት አልተቻለም። እባክዎ ፈቃድ ይስጡ።"));
-              return;
-            }
-            resolve({ latitude: loc.latitude, longitude: loc.longitude });
-          });
-        };
-
-        if (!tgLm.isInited) {
-          tgLm.init(doRequest);
-        } else {
-          doRequest();
-        }
-        return;
-      }
-
-      // Fallback: standard browser geolocation
-      if (!navigator.geolocation) {
-        reject(new Error("ጂፒኤስ (GPS) በስልክዎ ላይ አይሰራም። እባክዎ በሌላ ስልክ ይሞክሩ።"));
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-        (err) => {
-          if (err.code === err.PERMISSION_DENIED) {
-            reject(new Error("እባክዎ ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።"));
-          } else {
-            reject(new Error("ቦታዎን ሳያረጋግጡ መመዝገብ አይችሉም።"));
-          }
-        },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-      );
-    });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -262,19 +117,40 @@ export default function App() {
     setStatus({ type: "", message: "" });
 
     let coords = {};
-    const gpsDisabled = config?.disableGpsCheck || (!config?.classLat && !config?.classLng);
-    if (attendanceStatus === "present" && !gpsDisabled) {
+    if (attendanceStatus === "present") {
+      if (!navigator.geolocation) {
+        setStatus({
+          type: "error",
+          message: "ጂፒኤስ (GPS) በስልክዎ ላይ አይሰራም። እባክዎ በሌላ ስልክ ይሞክሩ።",
+        });
+        setLoading(false);
+        return;
+      }
       try {
-        coords = await getLocation();
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          });
+        });
+        coords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
       } catch (geoErr) {
         setLoading(false);
-        setStatus({ type: "error", message: geoErr.message || "ቦታዎን ሳያረጋግጡ መመዝገብ አይችሉም።" });
+        let errorMsg = "ቦታዎን ሳያረጋግጡ መመዝገብ አይችሉም።";
+        if (geoErr.code === geoErr.PERMISSION_DENIED) {
+          errorMsg = "እባክዎ ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።";
+        }
+        setStatus({ type: "error", message: errorMsg });
         return;
       }
     }
 
     try {
-      await axios.post(`${API_BASE}/submit.php?c=${companySlug}`, {
+      await axios.post("/api/submit", {
         fullName: selectedStudent.name,
         group: selectedStudent.group,
         status: attendanceStatus,
@@ -319,81 +195,41 @@ export default function App() {
 
   const [mode, setMode] = useState("attendance");
   const [receiptPayerName, setReceiptPayerName] = useState("");
-  const [receiptStudents, setReceiptStudents] = useState([]);
-  const [receiptStudentSearch, setReceiptStudentSearch] = useState("");
-  const [receiptPickerOpen, setReceiptPickerOpen] = useState(false);
-  const [receiptFileData, setReceiptFileData] = useState("");
-  const [receiptFileName, setReceiptFileName] = useState("");
+  const [receiptStudentName, setReceiptStudentName] = useState("");
+  const [receiptImageData, setReceiptImageData] = useState("");
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptStatusMsg, setReceiptStatusMsg] = useState({ type: "", message: "" });
 
-  const receiptPickerRef = useRef(null);
-
-  // ---------- Receipt file handling ----------
-  // Accepts images, PDFs, Word docs and other files. Images are resized and
-  // compressed client-side so they upload reliably; other files are sent as-is.
-  const processReceiptFile = (file) => {
-    if (!file) {
-      setReceiptFileData("");
-      setReceiptFileName("");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setReceiptStatusMsg({ type: "error", message: "File size must be less than 10MB." });
-      return;
-    }
-    setReceiptFileName(file.name || "");
-    const isImage = file.type && file.type.startsWith("image/");
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (!isImage) {
-        // Non-image: send the raw file (PDF, DOC, etc.)
-        setReceiptFileData(reader.result);
-        if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
-        return;
-      }
-      // Image: resize + compress
-      const img = new Image();
-      img.onload = () => {
-        const MAX = 1280;
-        let width = img.width;
-        let height = img.height;
-        if (width > MAX || height > MAX) {
-          const ratio = Math.min(MAX / width, MAX / height);
-          width = Math.round(width * ratio);
-          height = Math.round(height * ratio);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-        setReceiptFileData(canvas.toDataURL("image/jpeg", 0.82));
-        if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
-      };
-      img.onerror = () =>
-        setReceiptStatusMsg({ type: "error", message: "Could not read this file. Please try another file." });
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  };
-
+  // ---------- Improved Receipt Handlers ----------
   const handleFileChange = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) {
-      setReceiptFileData("");
-      setReceiptFileName("");
+      setReceiptImageData("");
       return;
     }
-    processReceiptFile(f);
+    // Optional: file size validation (e.g., max 5MB)
+    if (f.size > 5 * 1024 * 1024) {
+      setReceiptStatusMsg({ type: "error", message: "Image size must be less than 5MB." });
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setReceiptImageData(reader.result);
+    reader.readAsDataURL(f);
   };
 
-  // Drag-and-drop handlers
+  // Drag‑and‑drop handlers
   const handleDrop = (e) => {
     e.preventDefault();
     const f = e.dataTransfer.files?.[0];
     if (f) {
-      processReceiptFile(f);
+      if (f.size > 5 * 1024 * 1024) {
+        setReceiptStatusMsg({ type: "error", message: "Image size must be less than 5MB." });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => setReceiptImageData(reader.result);
+      reader.readAsDataURL(f);
       // Sync the file input for consistency (optional)
       const input = document.getElementById("receiptFileInput");
       if (input) {
@@ -407,211 +243,118 @@ export default function App() {
   const handleReceiptSubmit = async (e) => {
     e.preventDefault();
     // Validation
-    if (!receiptPayerName.trim() || receiptStudents.length === 0 || !receiptFileData) {
+    if (!receiptPayerName.trim() || !receiptStudentName.trim() || !receiptImageData) {
       setReceiptStatusMsg({ type: "error", message: "ሁሉም መስኮች አስፈላጊ ናቸው።" });
       return;
     }
     setReceiptLoading(true);
     setReceiptStatusMsg({ type: "", message: "" });
     try {
-      await axios.post(`${API_BASE}/receipt.php?c=${companySlug}`, {
+      await axios.post("/api/receipt", {
         payerName: receiptPayerName,
-        studentNames: receiptStudents.map((s) => s.name),
-        fileName: receiptFileName,
-        fileData: receiptFileData,
+        studentName: receiptStudentName,
+        imageData: receiptImageData,
       });
       setReceiptStatusMsg({ type: "success", message: "✅ ደረሰኙ በተሳካ ሁኔታ ተልኳል።" });
       setReceiptPayerName("");
-      setReceiptStudents([]);
-      setReceiptStudentSearch("");
-      setReceiptFileData("");
-      setReceiptFileName("");
+      setReceiptStudentName("");
+      setReceiptImageData("");
       // Reset file input
       const input = document.getElementById("receiptFileInput");
       if (input) input.value = "";
     } catch (err) {
       console.error(err);
-      setReceiptStatusMsg({ type: "error", message: err.response?.data?.error || err.response?.data?.message || "Submission failed" });
+      setReceiptStatusMsg({ type: "error", message: err.response?.data?.message || "Submission failed" });
     } finally {
       setReceiptLoading(false);
     }
   };
 
-  const filteredReceiptStudents = studentsList.filter((s) => {
-    const q = receiptStudentSearch.toLowerCase().trim();
-    if (!q) return true;
-    return s.name.includes(q) || s.englishName?.toLowerCase().includes(q);
-  });
-
-  const toggleReceiptStudent = (st) => {
-    setReceiptStudents((prev) =>
-      prev.some((x) => x.name === st.name)
-        ? prev.filter((x) => x.name !== st.name)
-        : [...prev, st]
-    );
-  };
-
-  const footerBar = (
-    <footer style={styles.footer}>
-      <span>
-        Developed by{" "}
-        <a href="https://specificethiopian.com" target="_blank" rel="noopener" style={{...styles.footerLink, color: primary}}>
-          Specific Ethiopian
-        </a>
-      </span>
-      <span style={styles.footerSep}>•</span>
-      <span>
-        Contact:{" "}
-        <a href="https://t.me/xesser" target="_blank" rel="noopener" style={styles.footerLink}>
-          @xesser
-        </a>
-      </span>
-    </footer>
-  );
-
-  // ---------- Loading ----------
-  if (isInitializing) {
-    return (
-      <div style={styles.app}>
-        <style>{GLOBAL_CSS}</style>
-        <div style={styles.glow1} />
-        <div style={styles.glow2} />
-        <div style={styles.loadingWrap}>
-          <div style={{...styles.spinner, width: 32, height: 32, borderWidth: 3}} />
-          <p style={styles.loadingText}>Loading…</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------- No org loaded: login (shared Specific Ethiopian bot) ----------
-  if (!companySlug || !config) {
-    return (
-      <div style={styles.app}>
-        <style>{GLOBAL_CSS}</style>
-        <div style={styles.glow1} />
-        <div style={styles.glow2} />
-        <div style={{...styles.card, textAlign: 'center'}}>
-          <div style={{...styles.brandHeader, backgroundColor: '#d97706', backgroundImage: "linear-gradient(135deg, #d97706, #b45309)"}}>
-            <div style={styles.brandMark}>📋</div>
-          </div>
-          <div style={styles.content}>
-            {companySlug ? (
-              <>
-                <h1 style={styles.title}>Organization Not Found</h1>
-                <p style={styles.subtitle}>We couldn't find this organization. It may have been removed or the link is invalid.</p>
-                <button type="button" onClick={handleLogout} style={{...styles.secondaryBtn, width: "100%"}}>
-                  ← Sign in with a different account
-                </button>
-              </>
-            ) : (
-              <>
-                <h1 style={styles.title}>Sign In</h1>
-                <p style={styles.subtitle}>Enter your organization credentials to access the attendance system.</p>
-                <form onSubmit={handleLogin} style={styles.form}>
-                  <div style={styles.field}>
-                    <label style={styles.label}>Username</label>
-                    <input
-                      type="text"
-                      value={loginUser}
-                      onChange={(e) => {
-                        setLoginUser(e.target.value);
-                        if (loginError) setLoginError("");
-                      }}
-                      placeholder="your-username"
-                      autoComplete="username"
-                      autoCapitalize="none"
-                      style={styles.input}
-                      required
-                    />
-                  </div>
-                  <div style={styles.field}>
-                    <label style={styles.label}>Password</label>
-                    <input
-                      type="password"
-                      value={loginPass}
-                      onChange={(e) => {
-                        setLoginPass(e.target.value);
-                        if (loginError) setLoginError("");
-                      }}
-                      placeholder="••••••••"
-                      autoComplete="current-password"
-                      style={styles.input}
-                      required
-                    />
-                  </div>
-
-                  {loginError && <p style={styles.errorMsg}>{loginError}</p>}
-
-                  <button
-                    type="submit"
-                    disabled={loginLoading}
-                    style={{...styles.primaryBtn, width: "100%", backgroundColor: '#d97706', backgroundImage: "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0))", opacity: loginLoading ? 0.6 : 1}}
-                  >
-                    {loginLoading ? (
-                      <span style={styles.btnSpinnerWrap}><span style={styles.spinner} /></span>
-                    ) : null}
-                    {loginLoading ? "Signing in…" : "Sign In →"}
-                  </button>
-                </form>
-                <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: '#9aa0ae' }}>
-                  Don't have an account?{" "}
-                  <a href="https://specificethiopian.com/evaluation/register.php" target="_blank" rel="noopener" style={{color: '#d97706', textDecoration: 'none', fontWeight: 600}}>
-                    Register your organization
-                  </a>
-                </div>
-              </>
-            )}
-          </div>
-          {footerBar}
-        </div>
-      </div>
-    );
-  }
-
-  const selectedView = mode === "attendance" && selectedStudent;
-
   return (
-    <div style={styles.app}>
-      <style>{GLOBAL_CSS}</style>
-      <div style={styles.glow1} />
-      <div style={styles.glow2} />
-
+    <div style={styles.container}>
       <div style={styles.card}>
-        {selectedView ? (
-          // ── Selected student: profile page using the default UI language ──
-          <div style={{ animation: "fadeUp .3s ease", display: "flex", flexDirection: "column", flex: 1 }}>
-            <div style={styles.coverWrap}>
-              {config.cover ? (
-                <img src={config.cover} alt="Cover" style={styles.coverImage} />
-              ) : (
-                <div style={{...styles.coverImage, backgroundColor: primary, backgroundImage: `linear-gradient(135deg, ${primary}, #0f1117)`}} />
+        <img src="/begena.png" alt="በገና (Begena)" style={styles.topImage} />
+
+        <div style={styles.content}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+            <h1 style={styles.title}>የበገና ትምህርት መገኘት መዝግብ</h1>
+          </div>
+          <p style={styles.subtitle}>ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።</p>
+
+          <div style={styles.choiceRow}>
+            <button
+              style={{ ...styles.choiceButton, ...(mode === "attendance" ? styles.choiceActive : {}) }}
+              onClick={() => setMode("attendance")}
+            >
+              <svg style={styles.iconSmall} viewBox="0 0 19 19"><use href="/icons.svg#github-icon" /></svg>
+              Attendance
+            </button>
+            <button
+              style={{ ...styles.choiceButton, ...(mode === "receipt" ? styles.choiceActive : {}) }}
+              onClick={() => setMode("receipt")}
+            >
+              <svg style={styles.iconSmall} viewBox="0 0 16 17"><use href="/icons.svg#bluesky-icon" /></svg>
+              Upload Receipt
+            </button>
+          </div>
+
+          {mode === "attendance" && (
+            <form onSubmit={handleSubmit} style={styles.form}>
+              {/* ... attendance form (unchanged) ... */}
+              <div style={styles.inputGroup} ref={dropdownRef}>
+                <label style={styles.label}>ስምዎን ይፈልጉ / Search Name</label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="text"
+                    placeholder="በአማርኛ ወይም በEnglish ይፃፉ..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSearchTerm(val);
+                      if (selectedStudent && val !== selectedStudent.name) {
+                        setSelectedStudent(null);
+                      }
+                      setIsOpen(true);
+                      if (status.type) setStatus({ type: "", message: "" });
+                    }}
+                    onFocus={() => setIsOpen(true)}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                    style={styles.input}
+                  />
+                  {isOpen && (
+                    <ul style={styles.dropdownList}>
+                      {filteredStudents.length > 0 ? (
+                        filteredStudents.slice(0, 30).map((st, idx) => (
+                          <li
+                            key={idx}
+                            onPointerDown={(e) => {
+                              e.preventDefault();
+                              setSelectedStudent(st);
+                              setSearchTerm(st.name);
+                              setIsOpen(false);
+                            }}
+                            style={styles.dropdownItem}
+                          >
+                            <span style={{ fontWeight: "600" }}>{st.name}</span>
+                            <span style={styles.groupSubTag}>{st.group}</span>
+                          </li>
+                        ))
+                      ) : (
+                        <li style={styles.noResultItem}>ምንም አልተገኘም (No match found)</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              {selectedStudent && (
+                <div style={styles.groupBadge}>📍 <strong>ቡድን:</strong> {selectedStudent.group}</div>
               )}
-              <div style={styles.coverOverlay} />
-              <div style={styles.avatarBadge}>
-                {selectedStudent.image ? (
-                  <img src={selectedStudent.image} alt={selectedStudent.name} style={styles.avatarImage} />
-                ) : (
-                  <span style={styles.avatarFallback}>{(selectedStudent.name || "👤").charAt(0)}</span>
-                )}
-              </div>
-            </div>
 
-            <div style={{...styles.content, paddingTop: 58}}>
-              <div style={styles.profileHead}>
-                <h1 style={styles.title}>{selectedStudent.name}</h1>
-                {selectedStudent.englishName && <p style={styles.subtitle}>{selectedStudent.englishName}</p>}
-              </div>
-
-              <div style={styles.badgeRow}>
-                <div style={styles.badgeGroup}>📍 <strong>ቡድን:</strong> {selectedStudent.group}</div>
-                {selectedStudent.branch && <div style={styles.badgeBranch}>🏢 <strong>ዘርፍ/ምድብ:</strong> {selectedStudent.branch}</div>}
-                {selectedStudent.level && <div style={styles.badgeLevel}>🎓 <strong>ደረጃ:</strong> {selectedStudent.level}</div>}
-              </div>
-
-              <div style={styles.sectionDivider} />
-
-              <div style={styles.field}>
+              <div style={styles.inputGroup}>
                 <label style={styles.label}>የመገኘት ሁኔታ</label>
                 <select
                   value={attendanceStatus}
@@ -627,7 +370,7 @@ export default function App() {
               </div>
 
               {attendanceStatus === "permission" && (
-                <div style={styles.field}>
+                <div style={styles.inputGroup}>
                   <label style={styles.label}>የፈቃድ ምክንያት</label>
                   <textarea
                     value={reason}
@@ -643,573 +386,205 @@ export default function App() {
               )}
 
               {status.message && (
-                <p style={status.type === "error" ? styles.errorMsg : styles.successMsg}>{status.message}</p>
+                <p style={status.type === "error" ? styles.errorMsg : styles.successMsg}>
+                  {status.message}
+                </p>
               )}
 
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={loading}
-                style={{...styles.primaryBtn, width: "100%", backgroundColor: primary, backgroundImage: "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0))", opacity: loading ? 0.6 : 1}}
-              >
-                {loading ? (
-                  <span style={styles.btnSpinnerWrap}><span style={styles.spinner} /></span>
-                ) : null}
+              <button type="submit" disabled={loading} style={styles.button}>
                 {loading ? "በመመዝገብ ላይ..." : "መረጃውን መዝግብ"}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedStudent(null);
-                  setSearchTerm("");
-                  setStatus({ type: "", message: "" });
-                }}
-                style={{...styles.secondaryBtn, width: "100%", marginTop: 10}}
-              >
-                ← ስም ቀይር / Change Name
-              </button>
-            </div>
-          </div>
-        ) : (
-          // ── Default: company cover + info + forms ──
-          <>
-            <div style={styles.coverWrap}>
-              {config.cover ? (
-                <img src={config.cover} alt="Cover" style={styles.coverImage} />
-              ) : (
-                <div style={{...styles.coverImage, backgroundColor: primary, backgroundImage: `linear-gradient(135deg, ${primary}, #0f1117)`}} />
-              )}
-              <div style={styles.coverOverlay} />
-              {config.logo && <img src={config.logo} alt="Logo" style={styles.coverLogo} />}
-            </div>
+            </form>
+          )}
 
-            <div style={styles.content}>
-              <h1 style={styles.title}>{config.name}</h1>
-              <p style={styles.subtitle}>{config.description || "ለዛሬው ክፍለ ጊዜ መገኘትዎን ወይም ፈቃድዎን እዚህ ያረጋግጡ።"}</p>
-
-              <div style={styles.segmented}>
-                <button
-                  style={{...styles.segment, ...(mode === "attendance" ? {backgroundColor: primary, color: "#fff", borderColor: "transparent"} : {})}}
-                  onClick={() => setMode("attendance")}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={styles.iconSmall}>
-                    <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-                    <path d="M22 4L12 14.01l-3-3" />
-                  </svg>
-                  Attendance
-                </button>
-                {config.receiptUploadEnabled && (
-                  <button
-                    style={{...styles.segment, ...(mode === "receipt" ? {backgroundColor: primary, color: "#fff", borderColor: "transparent"} : {})}}
-                    onClick={() => setMode("receipt")}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={styles.iconSmall}>
-                      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z" />
-                      <path d="M16 8h-6M16 12h-6" />
-                    </svg>
-                    Upload Receipt
-                  </button>
-                )}
+          {mode === "receipt" && (
+            <form onSubmit={handleReceiptSubmit} style={styles.form}>
+              {/* Payer Name */}
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>ክፍያውን የፈጸመው ስም <span style={{ color: '#ff6b6b' }}>*</span></label>
+                <input
+                  value={receiptPayerName}
+                  onChange={(e) => {
+                    setReceiptPayerName(e.target.value);
+                    if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
+                  }}
+                  style={styles.input}
+                  placeholder="ክፍያ የፈጸመውን ሰው ስም ያስገቡ"
+                  required
+                />
               </div>
 
-              {mode === "attendance" && (
-                <form onSubmit={handleSubmit} style={styles.form}>
-                  <div style={styles.field} ref={dropdownRef}>
-                    <label style={styles.label}>ስምዎን ይፈልጉ / Search Name</label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type="text"
-                        placeholder="በአማርኛ ወይም በEnglish ይፃፉ..."
-                        value={searchTerm}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSearchTerm(val);
-                          if (selectedStudent && val !== selectedStudent.name) {
-                            setSelectedStudent(null);
-                          }
-                          setIsOpen(true);
-                          if (status.type) setStatus({ type: "", message: "" });
-                        }}
-                        onFocus={() => setIsOpen(true)}
-                        autoComplete="off"
-                        autoCorrect="off"
-                        autoCapitalize="off"
-                        spellCheck="false"
-                        style={styles.input}
-                      />
-                      {isOpen && (
-                        <ul style={styles.dropdownList}>
-                          {filteredStudents.length > 0 ? (
-                            filteredStudents.slice(0, 30).map((st, idx) => (
-                              <li
-                                key={idx}
-                                onPointerDown={(e) => {
-                                  e.preventDefault();
-                                  setSelectedStudent(st);
-                                  setSearchTerm(st.name);
-                                  setIsOpen(false);
-                                }}
-                                style={styles.dropdownItem}
-                              >
-                                {st.image ? (
-                                  <img src={st.image} alt={st.name} style={styles.dropdownThumb} />
-                                ) : (
-                                  <span style={styles.dropdownThumb}>👤</span>
-                                )}
-                                <span style={styles.dropdownInfo}>
-                                  <span style={{ fontWeight: "600" }}>{st.name}</span>
-                                  <span style={styles.dropdownTags}>
-                                    <span style={styles.groupSubTag}>{st.group}</span>
-                                    {st.branch && <span style={styles.branchSubTag}>{st.branch}</span>}
-                                    {st.level && <span style={styles.levelSubTag}>{st.level}</span>}
-                                  </span>
-                                </span>
-                              </li>
-                            ))
-                          ) : (
-                            <li style={styles.noResultItem}>ምንም አልተገኘም (No match found)</li>
-                          )}
-                        </ul>
-                      )}
+              {/* Student Name */}
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>የተከፈለለት ተማሪ ስም <span style={{ color: '#ff6b6b' }}>*</span></label>
+                <input
+                  value={receiptStudentName}
+                  onChange={(e) => {
+                    setReceiptStudentName(e.target.value);
+                    if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
+                  }}
+                  style={styles.input}
+                  placeholder="ክፍያ የተፈጸመለትን ተማሪ ስም ያስገቡ"
+                  required
+                />
+              </div>
+
+              {/* Image Upload - Professional Drop Zone */}
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>የደረሰኝ ምስል <span style={{ color: '#ff6b6b' }}>*</span></label>
+                <div
+                  style={{
+                    ...styles.uploadArea,
+                    borderColor: receiptImageData ? '#d97706' : 'rgba(255,255,255,0.2)',
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor = '#d97706';
+                    e.currentTarget.style.backgroundColor = 'rgba(217,119,6,0.08)';
+                  }}
+                  onDragLeave={(e) => {
+                    e.currentTarget.style.borderColor = receiptImageData ? '#d97706' : 'rgba(255,255,255,0.2)';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  onDrop={handleDrop}
+                >
+                  <input
+                    id="receiptFileInput"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    style={styles.fileInput}
+                  />
+                  {receiptImageData ? (
+                    <div style={styles.previewContainer}>
+                      <img src={receiptImageData} alt="Receipt preview" style={styles.previewImage} />
+                      <p style={styles.previewHint}>Click or drag to replace</p>
                     </div>
-                  </div>
-
-                  <div style={styles.field}>
-                    <label style={styles.label}>የመገኘት ሁኔታ</label>
-                    <select
-                      value={attendanceStatus}
-                      onChange={(e) => {
-                        setAttendanceStatus(e.target.value);
-                        if (status.type) setStatus({ type: "", message: "" });
-                      }}
-                      style={styles.select}
-                    >
-                      <option value="present">ተገኝቷል / ተገኝታለች</option>
-                      <option value="permission">ፈቃድ ጠይቋል / ጠይቃለች</option>
-                    </select>
-                  </div>
-
-                  {attendanceStatus === "permission" && (
-                    <div style={styles.field}>
-                      <label style={styles.label}>የፈቃድ ምክንያት</label>
-                      <textarea
-                        value={reason}
-                        onChange={(e) => {
-                          setReason(e.target.value);
-                          if (status.type) setStatus({ type: "", message: "" });
-                        }}
-                        placeholder="እባክዎ የፈቃድዎን ምክንያት እዚህ ይፃፉ..."
-                        rows={3}
-                        style={styles.textarea}
-                      />
+                  ) : (
+                    <div style={styles.uploadPlaceholder}>
+                      <span style={styles.uploadIcon}>📄</span>
+                      <p style={styles.uploadText}>Drop your receipt image here</p>
+                      <p style={styles.uploadHint}>or click to browse (JPG, PNG, WebP, max 5MB)</p>
                     </div>
                   )}
+                </div>
+              </div>
 
-                  {status.message && (
-                    <p style={status.type === "error" ? styles.errorMsg : styles.successMsg}>{status.message}</p>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{...styles.primaryBtn, width: "100%", backgroundColor: primary, backgroundImage: "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0))", opacity: loading ? 0.6 : 1}}
-                  >
-                    {loading ? (
-                      <span style={styles.btnSpinnerWrap}><span style={styles.spinner} /></span>
-                    ) : null}
-                    {loading ? "በመመዝገብ ላይ..." : "መረጃውን መዝግብ"}
-                  </button>
-                </form>
+              {/* Status message */}
+              {receiptStatusMsg.message && (
+                <p style={receiptStatusMsg.type === 'error' ? styles.errorMsg : styles.successMsg}>
+                  {receiptStatusMsg.message}
+                </p>
               )}
 
-              {mode === "receipt" && (
-                <form onSubmit={handleReceiptSubmit} style={styles.form}>
-                  <div style={styles.field}>
-                    <label style={styles.label}>ክፍያውን የፈጸመው ስም <span style={{ color: '#ff6b6b' }}>*</span></label>
-                    <input
-                      value={receiptPayerName}
-                      onChange={(e) => {
-                        setReceiptPayerName(e.target.value);
-                        if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
-                      }}
-                      style={styles.input}
-                      placeholder="ክፍያ የፈጸመውን ሰው ስም ያስገቡ"
-                      required
-                    />
-                  </div>
-
-                  {/* Student Names — searchable multi-select */}
-                  <div style={styles.field} ref={receiptPickerRef}>
-                    <label style={styles.label}>የተከፈለለት ተማሪ(ዎች) <span style={{ color: '#ff6b6b' }}>*</span></label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type="text"
-                        value={receiptStudentSearch}
-                        onChange={(e) => {
-                          setReceiptStudentSearch(e.target.value);
-                          setReceiptPickerOpen(true);
-                          if (receiptStatusMsg.type) setReceiptStatusMsg({ type: "", message: "" });
-                        }}
-                        onFocus={() => setReceiptPickerOpen(true)}
-                        placeholder="ተማሪ ፈልግና ምረጥ / Search & select students"
-                        autoComplete="off"
-                        autoCorrect="off"
-                        autoCapitalize="off"
-                        spellCheck="false"
-                        style={styles.input}
-                      />
-                      {receiptPickerOpen && (
-                        <ul style={{...styles.dropdownList, maxHeight: 220}}>
-                          {filteredReceiptStudents.length > 0 ? (
-                            filteredReceiptStudents.slice(0, 30).map((st, idx) => {
-                              const isSelected = receiptStudents.some((x) => x.name === st.name);
-                              return (
-                                <li
-                                  key={idx}
-                                  onPointerDown={(e) => {
-                                    e.preventDefault();
-                                    toggleReceiptStudent(st);
-                                  }}
-                                  style={{...styles.dropdownItem, backgroundColor: isSelected ? "rgba(217,119,6,0.14)" : "transparent"}}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    readOnly
-                                    style={{ accentColor: primary, width: 16, height: 16, flexShrink: 0, pointerEvents: "none" }}
-                                  />
-                                  {st.image ? (
-                                    <img src={st.image} alt={st.name} style={styles.dropdownThumb} />
-                                  ) : (
-                                    <span style={styles.dropdownThumb}>👤</span>
-                                  )}
-                                  <span style={styles.dropdownInfo}>
-                                    <span style={{ fontWeight: "600" }}>{st.name}</span>
-                                    <span style={styles.dropdownTags}>
-                                      <span style={styles.groupSubTag}>{st.group}</span>
-                                      {st.branch && <span style={styles.branchSubTag}>{st.branch}</span>}
-                                      {st.level && <span style={styles.levelSubTag}>{st.level}</span>}
-                                    </span>
-                                  </span>
-                                </li>
-                              );
-                            })
-                          ) : (
-                            <li style={styles.noResultItem}>ምንም አልተገኘም (No match found)</li>
-                          )}
-                        </ul>
-                      )}
-                    </div>
-                    {receiptStudents.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, justifyContent: "flex-start" }}>
-                        {receiptStudents.map((st) => (
-                          <span key={st.name} style={styles.receiptTag}>
-                            {st.name}
-                            <button
-                              type="button"
-                              onClick={() => toggleReceiptStudent(st)}
-                              style={styles.receiptTagX}
-                              aria-label="Remove"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div style={{ fontSize: 12, color: "#7c8290" }}>
-                      You can select multiple students — search again to add more.
-                    </div>
-                  </div>
-
-                  <div style={styles.field}>
-                    <label style={styles.label}>የደረሰኝ ፋይል <span style={{ color: '#ff6b6b' }}>*</span></label>
-                    <div
-                      style={{
-                        ...styles.uploadArea,
-                        borderColor: receiptFileData ? primary : "rgba(255,255,255,0.12)",
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.style.borderColor = primary;
-                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.05)";
-                      }}
-                      onDragLeave={(e) => {
-                        e.currentTarget.style.borderColor = receiptFileData ? primary : "rgba(255,255,255,0.12)";
-                        e.currentTarget.style.backgroundColor = "transparent";
-                      }}
-                      onDrop={handleDrop}
-                    >
-                      <input
-                        id="receiptFileInput"
-                        type="file"
-                        accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx"
-                        onChange={handleFileChange}
-                        style={styles.fileInput}
-                      />
-                      {receiptFileData ? (
-                        <div style={styles.previewContainer}>
-                          {receiptFileData.startsWith("data:image/") ? (
-                            <img src={receiptFileData} alt="Receipt preview" style={styles.previewImage} />
-                          ) : (
-                            <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>📄</span>
-                          )}
-                          {receiptFileName && <p style={styles.previewHint}>{receiptFileName}</p>}
-                          <p style={styles.previewHint}>Click or drag to replace</p>
-                        </div>
-                      ) : (
-                        <div style={styles.uploadPlaceholder}>
-                          <span style={styles.uploadIcon}>📄</span>
-                          <p style={styles.uploadText}>Drop your receipt file here</p>
-                          <p style={styles.uploadHint}>or click to browse (images, PDF, DOC, TXT, max 10MB)</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {receiptStatusMsg.message && (
-                    <p style={receiptStatusMsg.type === 'error' ? styles.errorMsg : styles.successMsg}>
-                      {receiptStatusMsg.message}
-                    </p>
+              {/* Buttons */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="submit"
+                  disabled={receiptLoading}
+                  style={{
+                    ...styles.button,
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  {receiptLoading ? (
+                    <>
+                      <span style={styles.spinner}></span>
+                      በመላክ ላይ...
+                    </>
+                  ) : (
+                    'ደረሰኙን ላክ'
                   )}
-
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button
-                      type="submit"
-                      disabled={receiptLoading}
-                      style={{
-                        ...styles.primaryBtn,
-                        flex: 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8,
-                        backgroundColor: primary,
-                        backgroundImage: "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0))",
-                      }}
-                    >
-                      {receiptLoading ? (
-                        <>
-                          <span style={styles.spinner}></span>
-                          በመላክ ላይ...
-                        </>
-                      ) : (
-                        'ደረሰኙን ላክ'
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMode('attendance')}
-                      style={{ ...styles.secondaryBtn, flex: 0.5 }}
-                    >
-                      Back
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          </>
-        )}
-
-        {footerBar}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('start')}
+                  style={{ ...styles.button, backgroundColor: '#334155', flex: 0.5 }}
+                >
+                  Back
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ---------- Styles ----------
+// ---------- Enhanced Styles ----------
 const styles = {
-  app: {
-    minHeight: "100dvh",
-    width: "100%",
+  container: {
+    minHeight: "100vh",
     display: "flex",
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: "#0a0c11",
-    color: "#ffffff",
-    fontFamily: "'Noto Sans Ethiopic', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-  glow1: {
-    position: "fixed",
-    top: "-160px",
-    left: "-120px",
-    width: "420px",
-    height: "420px",
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(217,119,6,0.28), transparent 70%)",
-    filter: "blur(40px)",
-    animation: "glowPulse 6s ease-in-out infinite",
-    pointerEvents: "none",
-  },
-  glow2: {
-    position: "fixed",
-    bottom: "-160px",
-    right: "-120px",
-    width: "420px",
-    height: "420px",
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(99,102,241,0.22), transparent 70%)",
-    filter: "blur(40px)",
-    animation: "glowPulse 8s ease-in-out infinite",
-    pointerEvents: "none",
-  },
-  loadingWrap: {
-    position: "relative",
-    zIndex: 2,
-    margin: "auto",
-    display: "flex",
-    flexDirection: "column",
     alignItems: "center",
-    gap: 14,
-    color: "#fff",
-  },
-  loadingText: {
-    fontSize: 14,
-    color: "#9aa0ae",
-    margin: 0,
+    justifyContent: "center",
+    backgroundColor: "#0f1117",
+    color: "#ffffff",
+    fontFamily: "'Noto Sans Ethiopic', -apple-system, BlinkMacSystemFont, sans-serif",
+    padding: "20px",
   },
   card: {
-    position: "relative",
-    zIndex: 2,
     width: "100%",
-    minHeight: "100dvh",
-    display: "flex",
-    flexDirection: "column",
-    backgroundColor: "rgba(20, 23, 31, 0.92)",
-    borderLeft: "1px solid rgba(255, 255, 255, 0.09)",
-    borderRight: "1px solid rgba(255, 255, 255, 0.09)",
+    maxWidth: "420px",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    border: "1px solid rgba(255, 255, 255, 0.1)",
+    borderRadius: "16px",
     overflow: "hidden",
-    backdropFilter: "blur(14px)",
-    boxShadow: "0 24px 60px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3)",
-    animation: "fadeUp .35s ease",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
   },
-  brandHeader: {
-    height: "130px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  brandMark: {
-    width: 64,
-    height: 64,
-    borderRadius: "18px",
-    background: "rgba(255,255,255,0.16)",
-    border: "1px solid rgba(255,255,255,0.25)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 32,
-    boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-  },
-  coverWrap: {
-    position: "relative",
-    height: "220px",
-  },
-  coverImage: {
+  topImage: {
     width: "100%",
-    height: "100%",
+    height: "180px",
     objectFit: "cover",
     objectPosition: "center 20%",
-  },
-  coverOverlay: {
-    position: "absolute",
-    inset: 0,
-    background: "linear-gradient(180deg, rgba(0,0,0,0.05) 30%, rgba(10,12,17,0.85) 100%)",
-  },
-  coverLogo: {
-    position: "absolute",
-    left: 16,
-    bottom: 14,
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    border: "2px solid rgba(255,255,255,0.25)",
-    objectFit: "cover",
-    boxShadow: "0 6px 18px rgba(0,0,0,0.4)",
-  },
-  avatarBadge: {
-    position: "absolute",
-    left: "50%",
-    bottom: -46,
-    transform: "translateX(-50%)",
-    width: 96,
-    height: 96,
-    borderRadius: "50%",
-    border: "4px solid rgba(255,255,255,0.92)",
-    boxShadow: "0 12px 32px rgba(0,0,0,0.55)",
-    overflow: "hidden",
-    backgroundColor: "#1a1e28",
-    zIndex: 3,
-  },
-  avatarImage: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
-  },
-  avatarFallback: {
-    width: "100%",
-    height: "100%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 30,
-    fontWeight: 700,
-    color: "#fff",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  profileHead: {
-    marginBottom: 14,
-  },
-  sectionDivider: {
-    height: 1,
-    margin: "2px 0 18px",
-    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent)",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
   },
   content: {
-    padding: "22px 22px 8px",
+    padding: "24px",
     textAlign: "center",
   },
   title: {
-    fontSize: "21px",
-    fontWeight: "800",
-    letterSpacing: "-0.01em",
+    fontSize: "20px",
+    fontWeight: "700",
     margin: "0 0 6px 0",
-    color: "#f5f6fa",
+    color: "#ffffff",
   },
   subtitle: {
-    fontSize: "13.5px",
-    lineHeight: 1.5,
-    color: "#9aa0ae",
-    margin: "0 0 18px 0",
+    fontSize: "13px",
+    color: "#a0a0a0",
+    margin: "0 0 20px 0",
   },
-  segmented: {
-    display: "flex",
-    gap: 6,
-    padding: 5,
-    marginBottom: 18,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: 12,
+  choiceRow: {
+    display: 'flex',
+    gap: 10,
+    justifyContent: 'center',
+    marginBottom: 14,
   },
-  segment: {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    padding: "10px 12px",
-    borderRadius: 9,
-    backgroundColor: "transparent",
-    color: "#c3c8d2",
-    border: "1px solid transparent",
-    cursor: "pointer",
+  choiceButton: {
+    padding: '10px 14px',
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    color: '#fff',
+    border: '1px solid rgba(255,255,255,0.06)',
+    cursor: 'pointer',
     fontWeight: 600,
-    fontSize: 13,
-    transition: "background-color .18s ease, color .18s ease",
+  },
+  choiceActive: {
+    backgroundColor: '#d97706',
+    borderColor: 'transparent',
   },
   iconSmall: {
-    flexShrink: 0,
+    width: 16,
+    height: 16,
+    marginRight: 8,
+    verticalAlign: 'middle',
+    fill: 'var(--icon-color)',
   },
   form: {
     display: "flex",
@@ -1217,287 +592,137 @@ const styles = {
     gap: "16px",
     textAlign: "left",
   },
-  field: {
+  inputGroup: {
     display: "flex",
     flexDirection: "column",
-    gap: "7px",
+    gap: "6px",
   },
   label: {
     fontSize: "13px",
-    fontWeight: "600",
-    color: "#c3c8d2",
+    fontWeight: "500",
+    color: "#cccccc",
   },
   input: {
     width: "100%",
-    padding: "13px 15px",
-    borderRadius: "12px",
-    backgroundColor: "#0e1116",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
+    padding: "12px 16px",
+    borderRadius: "10px",
+    backgroundColor: "#1f2430",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
     color: "#ffffff",
     fontSize: "14px",
     outline: "none",
     boxSizing: "border-box",
-    transition: "border-color .18s ease, box-shadow .18s ease",
-  },
-  select: {
-    width: "100%",
-    padding: "13px 15px",
-    borderRadius: "12px",
-    backgroundColor: "#0e1116",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    color: "#ffffff",
-    fontSize: "14px",
-    outline: "none",
-    boxSizing: "border-box",
-    appearance: "none",
-    backgroundImage: "url(\"data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239aa0ae' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'/%3e%3c/svg%3e\")",
-    backgroundRepeat: "no-repeat",
-    backgroundPosition: "right 14px center",
-  },
-  textarea: {
-    width: "100%",
-    padding: "13px 15px",
-    borderRadius: "12px",
-    backgroundColor: "#0e1116",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    color: "#ffffff",
-    fontSize: "14px",
-    outline: "none",
-    resize: "none",
-    fontFamily: "inherit",
-    boxSizing: "border-box",
-    transition: "border-color .18s ease, box-shadow .18s ease",
   },
   dropdownList: {
     position: "absolute",
-    top: "calc(100% + 6px)",
+    top: "108%",
     left: 0,
     right: 0,
-    maxHeight: "230px",
+    maxHeight: "200px",
     overflowY: "auto",
-    backgroundColor: "#161a23",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    borderRadius: "12px",
+    backgroundColor: "#191d26",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    borderRadius: "10px",
     listStyle: "none",
-    padding: "6px",
+    padding: "0",
     margin: "0",
     zIndex: 100,
-    boxShadow: "0 18px 40px rgba(0,0,0,0.6)",
+    boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
   },
   dropdownItem: {
-    padding: "9px 10px",
-    borderRadius: 9,
+    padding: "12px 14px",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
     cursor: "pointer",
     fontSize: "14px",
     color: "#ffffff",
     display: "flex",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: "10px",
-    transition: "background-color .12s ease",
-  },
-  dropdownThumb: {
-    width: 36,
-    height: 36,
-    borderRadius: "50%",
-    objectFit: "cover",
-    border: "1px solid rgba(255,255,255,0.15)",
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    fontSize: "16px",
-  },
-  dropdownInfo: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 3,
-    minWidth: 0,
-  },
-  dropdownTags: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 4,
   },
   groupSubTag: {
     fontSize: "11px",
     color: "#a0a0a0",
     backgroundColor: "rgba(255, 255, 255, 0.08)",
     padding: "2px 6px",
-    borderRadius: "6px",
-  },
-  branchSubTag: {
-    fontSize: "11px",
-    color: "#93c5fd",
-    backgroundColor: "rgba(59, 130, 246, 0.16)",
-    padding: "2px 6px",
-    borderRadius: "6px",
-  },
-  levelSubTag: {
-    fontSize: "11px",
-    color: "#d8b4fe",
-    backgroundColor: "rgba(168, 85, 247, 0.16)",
-    padding: "2px 6px",
-    borderRadius: "6px",
+    borderRadius: "4px",
   },
   noResultItem: {
-    padding: "14px",
+    padding: "12px 14px",
     fontSize: "13px",
     color: "#888888",
     textAlign: "center",
   },
-  badgeRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-    justifyContent: "center",
-    marginBottom: 16,
-  },
-  badgeGroup: {
-    backgroundColor: "rgba(217, 119, 6, 0.12)",
-    border: "1px solid rgba(217, 119, 6, 0.3)",
-    borderRadius: "10px",
-    padding: "9px 13px",
+  groupBadge: {
+    backgroundColor: "rgba(217, 119, 6, 0.15)",
+    border: "1px solid rgba(217, 119, 6, 0.4)",
+    borderRadius: "8px",
+    padding: "10px 14px",
     fontSize: "13px",
     color: "#fbbf24",
   },
-  badgeBranch: {
-    backgroundColor: "rgba(59, 130, 246, 0.12)",
-    border: "1px solid rgba(59, 130, 246, 0.3)",
+  select: {
+    width: "100%",
+    padding: "12px 16px",
     borderRadius: "10px",
-    padding: "9px 13px",
-    fontSize: "13px",
-    color: "#93c5fd",
+    backgroundColor: "#1f2430",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    color: "#ffffff",
+    fontSize: "14px",
+    outline: "none",
+    boxSizing: "border-box",
   },
-  badgeLevel: {
-    backgroundColor: "rgba(168, 85, 247, 0.12)",
-    border: "1px solid rgba(168, 85, 247, 0.3)",
+  textarea: {
+    width: "100%",
+    padding: "12px 16px",
     borderRadius: "10px",
-    padding: "9px 13px",
-    fontSize: "13px",
-    color: "#d8b4fe",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    color: "#ffffff",
+    fontSize: "14px",
+    outline: "none",
+    resize: "none",
+    fontFamily: "inherit",
+    boxSizing: "border-box",
   },
-  primaryBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+  button: {
     padding: "14px",
-    borderRadius: "12px",
+    borderRadius: "10px",
+    backgroundColor: "#d97706",
     color: "#ffffff",
     fontSize: "15px",
-    fontWeight: "700",
+    fontWeight: "600",
     border: "none",
     cursor: "pointer",
-    boxShadow: "0 8px 20px rgba(0,0,0,0.3)",
-    transition: "transform .12s ease, opacity .18s ease, box-shadow .18s ease",
-  },
-  secondaryBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    padding: "13px 16px",
-    borderRadius: "12px",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    color: "#c3c8d2",
-    fontSize: "14px",
-    fontWeight: "600",
-    border: "1px solid rgba(255,255,255,0.12)",
-    cursor: "pointer",
-    transition: "background-color .18s ease",
-  },
-  btnSpinnerWrap: {
-    display: "inline-flex",
-  },
-  spinner: {
-    display: "inline-block",
-    width: "16px",
-    height: "16px",
-    border: "2px solid rgba(255,255,255,0.3)",
-    borderTopColor: "#fff",
-    borderRadius: "50%",
-    animation: "spin 0.6s linear infinite",
+    marginTop: "8px",
+    transition: "opacity 0.2s",
   },
   errorMsg: {
     fontSize: "13px",
-    lineHeight: 1.4,
-    color: "#ff7a7a",
+    color: "#ff6b6b",
     margin: "0",
-    padding: "11px 13px",
+    padding: "8px",
     backgroundColor: "rgba(255, 107, 107, 0.1)",
-    border: "1px solid rgba(255, 107, 107, 0.25)",
-    borderRadius: "10px",
+    borderRadius: "6px",
   },
   successMsg: {
     fontSize: "13px",
-    lineHeight: 1.4,
-    color: "#5fd47a",
+    color: "#51cf66",
     margin: "0",
-    padding: "11px 13px",
+    padding: "8px",
     backgroundColor: "rgba(81, 207, 102, 0.1)",
-    border: "1px solid rgba(81, 207, 102, 0.25)",
-    borderRadius: "10px",
-  },
-  footer: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexWrap: "wrap",
-    gap: 8,
-    padding: "14px 16px",
-    marginTop: "auto",
-    borderTop: "1px solid rgba(255,255,255,0.07)",
-    backgroundColor: "rgba(10,12,17,0.6)",
-    fontSize: "12.5px",
-    color: "#7c8290",
-  },
-  footerSep: {
-    color: "#3a3f4a",
-  },
-  footerLink: {
-    color: "#5aa7e6",
-    textDecoration: "none",
-    fontWeight: 600,
+    borderRadius: "6px",
   },
 
-  // ---------- Receipt Upload ----------
-  receiptTag: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "6px 10px",
-    borderRadius: "999px",
-    backgroundColor: "rgba(217,119,6,0.14)",
-    border: "1px solid rgba(217,119,6,0.35)",
-    color: "#fbbf24",
-    fontSize: 13,
-    fontWeight: 500,
-  },
-  receiptTagX: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 18,
-    height: 18,
-    borderRadius: "50%",
-    border: "none",
-    background: "rgba(0,0,0,0.3)",
-    color: "#fff",
-    fontSize: 13,
-    lineHeight: 1,
-    cursor: "pointer",
-    padding: 0,
-  },
+  // ---------- New Receipt Upload Styles ----------
   uploadArea: {
     position: "relative",
-    border: "2px dashed rgba(255,255,255,0.12)",
-    borderRadius: "14px",
-    padding: "22px",
+    border: "2px dashed rgba(255,255,255,0.2)",
+    borderRadius: "12px",
+    padding: "20px",
     textAlign: "center",
     cursor: "pointer",
     transition: "border-color 0.2s, background-color 0.2s",
-    minHeight: "150px",
+    minHeight: "140px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1538,7 +763,7 @@ const styles = {
   previewImage: {
     maxWidth: "100%",
     maxHeight: "180px",
-    borderRadius: "10px",
+    borderRadius: "8px",
     objectFit: "contain",
     border: "1px solid rgba(255,255,255,0.1)",
   },
@@ -1547,4 +772,14 @@ const styles = {
     color: "#888888",
     margin: 0,
   },
+  spinner: {
+    display: "inline-block",
+    width: "16px",
+    height: "16px",
+    border: "2px solid rgba(255,255,255,0.3)",
+    borderTopColor: "#fff",
+    borderRadius: "50%",
+    animation: "spin 0.6s linear infinite",
+  },
 };
+

@@ -18,13 +18,13 @@ export default async function handler(req, res) {
 
       if (text.startsWith("/start") || text.startsWith("/help")) {
         const welcomeMessage = `
-                      ወደ *የበገና ትምህርት መገኘት መመዝገቢያ ቦት* እንኳን በደህና መጡ! 🎼
+ወደ *የበገና ትምህርት መገኘት መመዝገቢያ ቦት* እንኳን በደህና መጡ! 🎼
 
-                      ሰላም ${firstName} 👋
+ሰላም ${firstName} 👋
 
-                      በዚህ ቦት አማካኝነት የዘወትር የበገና ትምህርት ክፍለ ጊዜ መገኘትዎን በቀላሉ መመዝገብ ይችላሉ።
+በዚህ ቦት አማካኝነት የዘወትር የበገና ትምህርት ክፍለ ጊዜ መገኘትዎን በቀላሉ መመዝገብ ይችላሉ።
 
-                      👇 **መገኘትዎን ለመመዝገብ ከታች ያለውን ቁልፍ ይጫኑ:**
+👇 **መገኘትዎን ለመመዝገብ ከታች ያለውን ቁልፍ ይጫኑ:**
         `.trim();
 
         // Send Welcome Message with Inline WebApp Button
