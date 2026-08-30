@@ -5,6 +5,8 @@ import { attendanceStore } from "../lib/store.js";
 import { STUDENTS } from "../src/students.js";
 import { syncStudentsToSheet } from "../lib/syncStudents.js";
 // In-memory record tracking
+// Track whether we've synced the Students tab this server instance lifetime
+let _studentsSyncedThisInstance = false;
 const dailySubmissions = new Map();
 
 function getEthiopianDate(date = new Date()) {
@@ -98,10 +100,6 @@ async function appendToSheet({ fullName, group, status, date, time }) {
   });
 
   const sheets = google.sheets({ version: "v4", auth });
-
-  // Smart sync: Google Sheet is primary. students.js adds missing students and
-  // updates changed English names only — never overwrites the whole tab.
-  await syncStudentsToSheet(sheets, sheetId);
 
   const statusText = status === "present"
     ? "ተገኝቷል / ተገኝታለች"
@@ -214,7 +212,7 @@ async function appendToSheet({ fullName, group, status, date, time }) {
       }
 
       if (foundRow !== -1) {
-        const mark = status === "present" ? "✔" : "✖";
+        const mark = status === "present" ? "✔" : "P";
         await sheets.spreadsheets.values.update({
           spreadsheetId: sheetId,
           range: `Students!${targetColLetter}${foundRow}`,
@@ -367,6 +365,26 @@ export default async function handler(req, res) {
 
     // Send to General tab
     await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, payload);
+
+    // One-time sync per server instance: append any students from students.js
+    // that are missing from the Sheet's Students tab, and fix changed English names.
+    // Uses a module-level flag so this only runs once per cold start, not per submit.
+    if (!_studentsSyncedThisInstance) {
+      try {
+        const _credJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+        const _sheetId = process.env.GOOGLE_SHEET_ID;
+        if (_credJson && _sheetId) {
+          const _creds = JSON.parse(_credJson);
+          if (_creds.private_key) _creds.private_key = _creds.private_key.replace(/\\n/g, "\n");
+          const _auth = new google.auth.GoogleAuth({ credentials: _creds, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
+          const _sheets = google.sheets({ version: "v4", auth: _auth });
+          await syncStudentsToSheet(_sheets, _sheetId);
+        }
+      } catch (syncErr) {
+        console.warn("[submit] One-time student sync failed (non-fatal):", syncErr.message);
+      }
+      _studentsSyncedThisInstance = true;
+    }
 
     // Append row to Google Sheet — columns: ሙሉ ስም | ቡድን | ሁኔታ | ቀን | ሰዓት
     await appendToSheet({

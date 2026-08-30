@@ -59,6 +59,88 @@ function normalizeName(rawName) {
   return (rawName || "").replace(/\s*\(.*?\)\s*/g, "").trim().toLowerCase();
 }
 
+// Convert 1-based column number to A1-notation letter(s)  (1→A, 27→AA, …)
+function colNumberToLetter(n) {
+  let s = "";
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+/**
+ * Write "x" into the Students tab for every absent student.
+ * Only fills cells that are currently empty — never overwrites ✔ or P.
+ */
+async function markAbsentInSheet(sheets, sheetId, absentStudents, dailyColName) {
+  if (!absentStudents.length) return;
+
+  try {
+    // ── Find or create the date column in the Students header row ─────────────
+    const headerResp = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: "Students!1:1",
+    });
+    const headers = (headerResp.data.values && headerResp.data.values[0]) || [];
+
+    const existingIndex = headers.findIndex((h) => (h || "").toString().trim() === dailyColName);
+    const colIndexZeroBased = existingIndex !== -1 ? existingIndex : Math.max(headers.length, 3);
+    const targetColNumber = colIndexZeroBased + 1; // 1-based
+    const targetColLetter = colNumberToLetter(targetColNumber);
+
+    // Write header if column is new
+    if (existingIndex === -1) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: sheetId,
+        range: `Students!${targetColLetter}1`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [[dailyColName]] },
+      });
+    }
+
+    // ── Read col A to build amharic-name → row-index map ─────────────────────
+    const colAResp = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: "Students!A:A",
+    });
+    const colA = colAResp.data.values || [];
+    const nameToRow = new Map();
+    for (let i = 1; i < colA.length; i++) {
+      const cell = (colA[i] && colA[i][0]) ? colA[i][0].toString().trim().toLowerCase() : "";
+      if (cell) nameToRow.set(cell, i + 1); // 1-based row
+    }
+
+    // ── Read the target column to see what's already marked ──────────────────
+    const colResp = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `Students!${targetColLetter}:${targetColLetter}`,
+    });
+    const colData = colResp.data.values || [];
+
+    // ── Write "x" for each absent student whose cell is currently empty ───────
+    for (const student of absentStudents) {
+      const key = student.name.trim().toLowerCase();
+      const rowIndex = nameToRow.get(key);
+      if (!rowIndex) continue; // not on sheet
+
+      const existing = (colData[rowIndex - 1] && colData[rowIndex - 1][0]) || "";
+      if (existing) continue; // already marked (✔ or P), don't overwrite
+
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: sheetId,
+        range: `Students!${targetColLetter}${rowIndex}`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [["x"]] },
+      });
+      console.log(`[Cron] Marked ${student.name} as x (absent) in column ${dailyColName}`);
+    }
+  } catch (e) {
+    console.error("[Cron] markAbsentInSheet failed:", e.message, e.response?.data || "");
+  }
+}
+
 async function getStudentRoster() {
   const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const sheetId = process.env.GOOGLE_SHEET_ID;
@@ -337,6 +419,9 @@ export default async function handler(req, res) {
       });
     }
     await sendLongMessage(BOT_TOKEN, CHAT_ID, absentTopic, absentMessage);
+
+    // ── Write "x" into the Students tab for every absent student ─────────────
+    await markAbsentInSheet(sheets, sheetId, absentsList, ethioFormattedDate);
 
     return res.status(200).json({
       success: true,

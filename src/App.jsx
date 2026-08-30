@@ -331,10 +331,19 @@ export default function App() {
                           <li
                             key={idx}
                             onPointerDown={(e) => {
-                              e.preventDefault();
-                              setSelectedStudent(st);
-                              setSearchTerm(st.name);
-                              setIsOpen(false);
+                              // Record where the touch started — used to detect scroll vs tap
+                              e.currentTarget._tapStartY = e.clientY;
+                              e.currentTarget._tapStartX = e.clientX;
+                            }}
+                            onPointerUp={(e) => {
+                              // Only select if the finger barely moved (tap, not scroll)
+                              const dy = Math.abs(e.clientY - (e.currentTarget._tapStartY || e.clientY));
+                              const dx = Math.abs(e.clientX - (e.currentTarget._tapStartX || e.clientX));
+                              if (dy < 8 && dx < 8) {
+                                setSelectedStudent(st);
+                                setSearchTerm(st.name);
+                                setIsOpen(false);
+                              }
                             }}
                             style={styles.dropdownItem}
                           >
@@ -620,6 +629,8 @@ const styles = {
     right: 0,
     maxHeight: "200px",
     overflowY: "auto",
+    WebkitOverflowScrolling: "touch", // smooth momentum scroll on iOS
+    touchAction: "pan-y",             // let the browser handle vertical scroll natively
     backgroundColor: "#191d26",
     border: "1px solid rgba(255, 255, 255, 0.2)",
     borderRadius: "10px",
