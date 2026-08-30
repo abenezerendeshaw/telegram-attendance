@@ -52,26 +52,28 @@ export default function App() {
 
   const primary = config?.primaryColor || "#d97706";
 
-  useEffect(() => {
-    const checkLockStatus = () => {
-      // Skip localStorage lock entirely in admin mode
-      if (isAdminMode) return;
-
-      const lastSubmission = localStorage.getItem("last_attendance_timestamp");
-      if (lastSubmission) {
-        const now = Date.now();
-        const timePassed = now - parseInt(lastSubmission, 10);
-        const twentyFourHours = 24 * 60 * 60 * 1000;
-        if (timePassed < twentyFourHours) {
-          const remainingMs = twentyFourHours - timePassed;
-          const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
-          setIsLocked(true);
-          setHoursLeft(remainingHours);
-        } else {
-          setIsLocked(false);
-        }
+  // ── Re-usable lock checker (called on mount AND after each config load) ──
+  const checkLockStatus = () => {
+    if (isAdminMode) return; // admin mode skips all locks
+    const lastSubmission = localStorage.getItem("last_attendance_timestamp");
+    if (lastSubmission) {
+      const now = Date.now();
+      const timePassed = now - parseInt(lastSubmission, 10);
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      if (timePassed < twentyFourHours) {
+        const remainingMs = twentyFourHours - timePassed;
+        setIsLocked(true);
+        setHoursLeft(Math.ceil(remainingMs / (1000 * 60 * 60)));
+      } else {
+        setIsLocked(false);
       }
-    };
+    } else {
+      setIsLocked(false);
+    }
+  };
+
+  // ── On mount: check lock, set up click-outside listener, init Telegram ───
+  useEffect(() => {
     checkLockStatus();
 
     const handleClickOutside = (e) => {
@@ -109,8 +111,25 @@ export default function App() {
           axios.get(`${API_BASE}/config.php?c=${companySlug}`),
           axios.get(`${API_BASE}/members.php?c=${companySlug}`)
         ]);
-        setConfig(confRes.data);
+        const cfg = confRes.data;
+        setConfig(cfg);
         setStudentsList(memRes.data.members || []);
+
+        // Re-check the 24-hr lock every time a company config loads
+        checkLockStatus();
+
+        // Proactively init Telegram LocationManager so the permission
+        // dialog appears right away (not only when the user hits Submit).
+        // Only do this when GPS checking is enabled for this company.
+        const gpsRequired = !cfg.disableGpsCheck && (cfg.classLat || cfg.classLng);
+        if (gpsRequired && window.Telegram?.WebApp?.LocationManager) {
+          const lm = window.Telegram.WebApp.LocationManager;
+          if (!lm.isInited) {
+            lm.init(() => {
+              console.log("[TG LocationManager] inited, available:", lm.isLocationAvailable);
+            });
+          }
+        }
       } catch (e) {
         console.error("Failed to load company data:", e);
         setConfig(null);
@@ -162,6 +181,56 @@ export default function App() {
     return matchesAmharic || matchesEnglish;
   });
 
+  // ── Location helper ──────────────────────────────────────────────────────
+  // Uses Telegram.WebApp.LocationManager when inside Telegram (so the native
+  // permission dialog actually appears), falls back to navigator.geolocation
+  // in regular browsers.
+  const getLocation = () =>
+    new Promise((resolve, reject) => {
+      const tgLm = window.Telegram?.WebApp?.LocationManager;
+
+      if (tgLm) {
+        // Make sure the manager is initialised first
+        const doRequest = () => {
+          if (!tgLm.isLocationAvailable) {
+            reject(new Error("እባክዎ ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።"));
+            return;
+          }
+          tgLm.getLocation((loc) => {
+            if (!loc) {
+              reject(new Error("ቦታዎን ማግኘት አልተቻለም። እባክዎ ፈቃድ ይስጡ።"));
+              return;
+            }
+            resolve({ latitude: loc.latitude, longitude: loc.longitude });
+          });
+        };
+
+        if (!tgLm.isInited) {
+          tgLm.init(doRequest);
+        } else {
+          doRequest();
+        }
+        return;
+      }
+
+      // Fallback: standard browser geolocation
+      if (!navigator.geolocation) {
+        reject(new Error("ጂፒኤስ (GPS) በስልክዎ ላይ አይሰራም። እባክዎ በሌላ ስልክ ይሞክሩ።"));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+        (err) => {
+          if (err.code === err.PERMISSION_DENIED) {
+            reject(new Error("እባክዎ ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።"));
+          } else {
+            reject(new Error("ቦታዎን ሳያረጋግጡ መመዝገብ አይችሉም።"));
+          }
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      );
+    });
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -195,33 +264,11 @@ export default function App() {
     let coords = {};
     const gpsDisabled = config?.disableGpsCheck || (!config?.classLat && !config?.classLng);
     if (attendanceStatus === "present" && !gpsDisabled) {
-      if (!navigator.geolocation) {
-        setStatus({
-          type: "error",
-          message: "ጂፒኤስ (GPS) በስልክዎ ላይ አይሰራም። እባክዎ በሌላ ስልክ ይሞክሩ።",
-        });
-        setLoading(false);
-        return;
-      }
       try {
-        const position = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0,
-          });
-        });
-        coords = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
+        coords = await getLocation();
       } catch (geoErr) {
         setLoading(false);
-        let errorMsg = "ቦታዎን ሳያረጋግጡ መመዝገብ አይችሉም።";
-        if (geoErr.code === geoErr.PERMISSION_DENIED) {
-          errorMsg = "እባክዎ ስልክዎ ላይ የቦታ (Location) ፈቃድ ይስጡ።";
-        }
-        setStatus({ type: "error", message: errorMsg });
+        setStatus({ type: "error", message: geoErr.message || "ቦታዎን ሳያረጋግጡ መመዝገብ አይችሉም።" });
         return;
       }
     }
