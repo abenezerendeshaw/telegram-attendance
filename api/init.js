@@ -1,6 +1,6 @@
 // api/init.js
 import { google } from "googleapis";
-import { STUDENTS } from "../src/students.js";
+import { syncStudentsToSheet } from "../lib/syncStudents.js";
 
 async function getSheetsClient() {
   const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
@@ -26,24 +26,9 @@ export default async function handler(req, res) {
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
     if (!spreadsheetId) return res.status(500).json({ success: false, message: "GOOGLE_SHEET_ID not set" });
 
-    // Ensure Students tab
-    const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets(properties(title))" });
-    const existingTabs = (meta.data.sheets || []).map((s) => s.properties.title);
-
-    if (!existingTabs.includes("Students")) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: { requests: [{ addSheet: { properties: { title: "Students" } } }] },
-      });
-    }
-
-    const rows = STUDENTS.map((s) => [s.name || "", s.englishName || "", s.group || ""]);
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: "Students!A1",
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values: [["name", "englishName", "group"], ...rows] },
-    });
+    // Smart sync: Sheet is primary. students.js adds missing students and
+    // fixes English names — it does NOT overwrite the whole tab.
+    await syncStudentsToSheet(sheets, spreadsheetId);
 
     // Ensure Sheet1 has header row for base columns A-E
     const headerResp = await sheets.spreadsheets.values.get({ spreadsheetId, range: "Sheet1!1:1" });

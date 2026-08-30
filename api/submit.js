@@ -3,6 +3,7 @@ import axios from "axios";
 import { google } from "googleapis";
 import { attendanceStore } from "../lib/store.js";
 import { STUDENTS } from "../src/students.js";
+import { syncStudentsToSheet } from "../lib/syncStudents.js";
 // In-memory record tracking
 const dailySubmissions = new Map();
 
@@ -98,36 +99,9 @@ async function appendToSheet({ fullName, group, status, date, time }) {
 
   const sheets = google.sheets({ version: "v4", auth });
 
-  // Ensure a dedicated `Students` tab exists and is populated with the canonical
-  // roster from `src/students.js`. We overwrite the tab contents so the sheet
-  // always matches the code roster used for comparisons.
-  try {
-    const meta = await sheets.spreadsheets.get({
-      spreadsheetId: sheetId,
-      fields: "sheets(properties(title))",
-    });
-    const existingTabs = (meta.data.sheets || []).map((s) => s.properties.title);
-
-    if (!existingTabs.includes("Students")) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: sheetId,
-        requestBody: { requests: [{ addSheet: { properties: { title: "Students" } } }] },
-      });
-      console.log("[Sheets] Created Students tab");
-    }
-
-    const rows = STUDENTS.map((s) => [s.name || "", s.englishName || "", s.group || ""]);
-    const payload = { values: [["name", "englishName", "group"], ...rows] };
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: sheetId,
-      range: "Students!A1",
-      valueInputOption: "USER_ENTERED",
-      requestBody: payload,
-    });
-    console.log("[Sheets] Students tab populated from src/students.js");
-  } catch (e) {
-    console.error("[Sheets] Failed to ensure Students tab:", e.message, e.response?.data || "");
-  }
+  // Smart sync: Google Sheet is primary. students.js adds missing students and
+  // updates changed English names only — never overwrites the whole tab.
+  await syncStudentsToSheet(sheets, sheetId);
 
   const statusText = status === "present"
     ? "ተገኝቷል / ተገኝታለች"
